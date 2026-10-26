@@ -30,7 +30,7 @@ analytics-engine/
 ```bash
 python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
-uvicorn main:app --reload --port 8000
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 python scripts/seed_demo.py --users 30                # demo data (with the server running)
 python -m unittest discover -s tests -t .             # or: pytest
 ```
@@ -77,7 +77,7 @@ All events share these fields:
 | `screen_view` | `screen` | Apps |
 | `crash` | `screen`, `component?`, `exceptionType?` | Apps (sent on the next launch) |
 | `recommendation_shown` | `recommendationId` (one per load), `freeTimeMinutes?` | Backend |
-| `recommended_activity_selected` | `activityId`, `category`, `freeTimeMinutes?`, `recommendationId?`. Emitted when the user **joins** a recommended activity | Backend |
+| `recommended_activity_selected` | `activityId`, `category`, `freeTimeMinutes?`, `recommendationId?`, `title?`, `price?`. Emitted when the user **joins** a recommended activity | Backend |
 | `friend_availability_used` | `action` (`viewed`/`plan_created`/`plan_joined`, default `viewed`), `activityId?` | Backend (when `/api/friends/gaps` is called) |
 
 The full contract, with examples and sender rules, is in [`docs/analytics-contract.md`](docs/analytics-contract.md).
@@ -103,6 +103,7 @@ Each metric is an independent feature (see `routes/` and `metrics/`); its defini
 | 3 | What proportion of recommended activities do students select during their free time? | `/metrics/selection-rate` | Unique (user, activity) joins to a recommended activity / recommendation loads with free time. Also returns `loadSelectionRate` (loads with at least one join), which never exceeds 1 |
 | 4 | Which recommended category is selected most for each free time duration? | `/metrics/category-by-free-time` | Winning category in `0-30`, `30-60`, `60-120` and `120+` minutes, with a tie flag. Ranges are configurable (`buckets=`) |
 | 5 | What percentage of active users use Friend Availability? | `/metrics/friend-availability` | Users with a `friend_availability_used` event / active users in the last `activeDays` days (default 7). Also returns the rate of users who created or joined a plan |
+| 9 | What categories and activities have the highest demand across time slots for commercial partnerships? | `/metrics/category-demand` | Selections aggregated into 5 campus time slots (Morning, Midday, Afternoon, Evening, Off-hours), ranking categories, identifying top activities, and recommending monetization partnerships. Accepts `tz_offset=` (default -5). |
 
 Common filters:
 
