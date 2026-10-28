@@ -14,6 +14,17 @@ SCREENS = ["Home", "Recommendations", "FriendAvailability", "ActivityDetail", "P
 CATEGORIES = ["DEPORTES", "ESTUDIO", "CULTURA", "ENTRETENIMIENTO"]
 VERSIONS = ["0.9.0", "1.0.0", "1.1.0"]
 
+ACTIVITIES_CATALOG = [
+    ("Torneo Relámpago de Fútbol 5", "DEPORTES", "$15.000 COP"),
+    ("Grupo de Estudio: Cálculo Integral", "ESTUDIO", "Gratis"),
+    ("Cineclub: Ciclo Cine Francés", "CULTURA", "$5.000 COP"),
+    ("Tarde de Juegos de Mesa y Café", "ENTRETENIMIENTO", "$8.000 COP"),
+    ("Entrenamiento Funcional en Cancha", "DEPORTES", "Gratis"),
+    ("Club de Lectura: Literatura Contemporánea", "CULTURA", "Gratis"),
+    ("Taller de Algoritmos en Python", "ESTUDIO", "$10.000 COP"),
+    ("Noche de Karaoke y Pizza", "ENTRETENIMIENTO", "$20.000 COP"),
+]
+
 
 def build_events(users: int, days: int, rng: random.Random) -> list[dict]:
     now = datetime.now(timezone.utc)
@@ -51,8 +62,10 @@ def build_events(users: int, days: int, rng: random.Random) -> list[dict]:
             rec_id = str(uuid.uuid4())
             add(user, at, None, "recommendation_shown", recommendationId=rec_id, freeTimeMinutes=free)
             if free > 0 and rng.random() < 0.35:
-                add(user, at, None, "recommended_activity_selected", activityId=str(uuid.uuid4()),
-                    category=rng.choice(CATEGORIES), freeTimeMinutes=free, recommendationId=rec_id)
+                act = rng.choice(ACTIVITIES_CATALOG)
+                act_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, act[0]))
+                add(user, at, None, "recommended_activity_selected", activityId=act_id,
+                    category=act[1], title=act[0], price=act[2], freeTimeMinutes=free, recommendationId=rec_id)
             if rng.random() < 0.25:
                 add(user, at, None, "friend_availability_used",
                     action=rng.choice(["viewed", "viewed", "plan_created", "plan_joined"]))

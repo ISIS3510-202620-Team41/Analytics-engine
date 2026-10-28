@@ -70,6 +70,8 @@ class RecommendedActivitySelectedEvent(_BaseEvent):
     category: Category
     freeTimeMinutes: int | None = Field(default=None, ge=0)
     recommendationId: str | None = Field(default=None, max_length=100)
+    title: str | None = Field(default=None, max_length=200)
+    price: str | None = Field(default=None, max_length=50)
 
     @field_validator("category", mode="before")
     @classmethod
@@ -135,4 +137,6 @@ def to_row(event, received_at: datetime) -> dict:
         "free_time_minutes": getattr(event, "freeTimeMinutes", None),
         "recommendation_id": getattr(event, "recommendationId", None),
         "action": getattr(event, "action", None),
+        "title": getattr(event, "title", None),
+        "price": getattr(event, "price", None),
     }
