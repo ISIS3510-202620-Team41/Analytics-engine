@@ -23,7 +23,7 @@ def build_events(users: int, days: int, rng: random.Random) -> list[dict]:
         events.append({"eventId": str(uuid.uuid4()), "eventType": event_type, "userId": user,
                        "appVersion": version, "timestamp": at.isoformat(), **fields})
 
-    for _ in range(users):
+    for user_index in range(users):
         user, version = str(uuid.uuid4()), rng.choice(VERSIONS)
 
         #Profile se le asigna solamente al 25% inicial de la cohorte
