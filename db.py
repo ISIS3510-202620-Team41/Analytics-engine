@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS events (
     recommendation_id  TEXT,
     action             TEXT,
     title              TEXT,
-    price              TEXT
+    price              TEXT,
+    activity_duration_minutes  INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_events_type_time ON events (event_type, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_events_user_time ON events (user_id, occurred_at);
@@ -36,7 +37,7 @@ CREATE INDEX IF NOT EXISTS idx_events_user_time ON events (user_id, occurred_at)
 COLUMNS = (
     "event_id", "event_type", "user_id", "session_id", "app_version", "occurred_at", "received_at",
     "screen", "component", "exception_type", "load_type", "duration_ms", "activity_id", "category",
-    "free_time_minutes", "recommendation_id", "action", "title", "price",
+    "free_time_minutes", "recommendation_id", "action", "title", "price", "activity_duration_minutes"
 )
 
 _initialized: set[str] = set()
@@ -61,6 +62,8 @@ def connect():
                 conn.execute("ALTER TABLE events ADD COLUMN title TEXT")
             if "price" not in existing:
                 conn.execute("ALTER TABLE events ADD COLUMN price TEXT")
+            if "activity_duration_minutes" not in existing:
+                conn.execute("ALTER TABLE events ADD COLUMN activity_duration_minutes INTEGER")
             _initialized.add(key)
         yield conn
         conn.commit()
