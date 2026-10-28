@@ -1,4 +1,4 @@
-""BQ8: Que funcionalidades y pantallas son usadas por menos del 40% de usuarios activos""
+"BQ8: Que funcionalidades y pantallas son usadas por menos del 40% de usuarios activos"
 
 
 from datetime import datetime, timedelta, timezone
@@ -9,11 +9,11 @@ DEFAULT_WINDOW_DAYS = 7
 UNDERUTILIZED_THRESHOLD = 0.40
 
 
-def feature_adoption(conn, f:Filters, window_days: int == DEFAULT_WINDOW_DAYS, now: datetime | None = None,) -> dict:
+def feature_adoption(conn, f:Filters, window_days = DEFAULT_WINDOW_DAYS, now: datetime | None = None,) -> dict:
     if window_days < 1:
         raise ValueError("El valor de ventana de dias debe ser por lo menos 1")
 
-    end = to_utc(now)
+    end = to_utc(now or datetime.now(timezone.utc))
     start = end - timedelta(days=window_days)
 
     # La métrica usa su propia ventana, pero conserva los filtros del dashboard.
