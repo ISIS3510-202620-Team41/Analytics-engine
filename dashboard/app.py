@@ -155,9 +155,9 @@ if not dm.get("totalUniqueSelections"):
     st.info("No activity selections recorded yet to evaluate duration match.")
 else:
     c1, c2, c3, c4 = st.columns(4)
-    
+
     valid_selections = dm.get("validSelections", 0)
-    
+
     # Check for valid data before displaying rates using standard blocks
     if valid_selections == 0:
         match_str = "No valid data"
@@ -165,7 +165,7 @@ else:
     else:
         match_str = pct(dm.get("matchRate"))
         overflow_str = pct(dm.get("overflowRate"))
-    
+
     c1.metric("Overall Match Rate", match_str, help="Proportion of valid selections where activity duration <= free time")
     c2.metric("Overall Overflow Rate", overflow_str, help="Proportion of valid selections exceeding available free time")
     c3.metric("Missing Data Rate", pct(dm.get("missingRate")), help="Selections missing either free time or activity duration")
@@ -174,7 +174,7 @@ else:
     categories = dm.get("categories", {})
     if categories:
         st.subheader("Match/Overflow Rates by Category")
-        
+
         # Prepare DataFrame for stacked bar chart using standard loops and blocks
         chart_data = {}
         for cat, stats in categories.items():
@@ -183,16 +183,16 @@ else:
                     "Fits within free time": stats["matchRate"] * 100,
                     "Exceeds free time": stats["overflowRate"] * 100
                 }
-        
+
         if chart_data:
             df_chart = pd.DataFrame(chart_data).T
             st.bar_chart(df_chart, y_label="Percentage (%)", height=300)
-        
+
         # Prepare table data for category breakdown
         table_rows = []
         for cat, stats in categories.items():
             cat_valid = stats.get("validSelections", 0)
-            
+
             # Format category rates using standard blocks
             if cat_valid == 0:
                 cat_match_str = "—"
@@ -200,7 +200,7 @@ else:
             else:
                 cat_match_str = pct(stats["matchRate"])
                 cat_overflow_str = pct(stats["overflowRate"])
-                
+
             table_rows.append({
                 "Category": cat,
                 "Matches": stats["matches"],
@@ -209,7 +209,7 @@ else:
                 "Match Rate": cat_match_str,
                 "Overflow Rate": cat_overflow_str,
             })
-        
+
         st.dataframe(pd.DataFrame(table_rows), hide_index=True, use_container_width=True)
 
 # ------------------------------------------------------------------ BQ9
