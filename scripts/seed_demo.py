@@ -34,15 +34,25 @@ def build_events(users: int, days: int, rng: random.Random) -> list[dict]:
         events.append({"eventId": str(uuid.uuid4()), "eventType": event_type, "userId": user,
                        "appVersion": version, "timestamp": at.isoformat(), **fields})
 
-    for _ in range(users):
+    for user_index in range(users):
         user, version = str(uuid.uuid4()), rng.choice(VERSIONS)
+
+        #Profile se le asigna solamente al 25% inicial de la cohorte
+        low_adoption_cohort = user_index < max(1, int(users*0.25))
+        #Agregado para BQ8
+        screens_for_user = (
+            SCREENS
+            if low_adoption_cohort
+            else SCREENS[:-1]
+        )
+
         for day in range(days):
             if rng.random() < 0.4:
                 continue                                    # ese dia no uso la app
             at = now - timedelta(days=day, minutes=rng.randint(10, 600))
             add(user, at, version, "app_loading_time", loadType="cold_start",
                 durationMs=max(200, int(rng.gauss(1400 if version == "0.9.0" else 850, 250))))
-            for screen in rng.sample(SCREENS, 3):
+            for screen in rng.sample(screens_for_user, 3):
                 add(user, at, version, "screen_view", screen=screen)
                 if rng.random() < (0.12 if screen == "ActivityDetail" else 0.02):
                     add(user, at, version, "crash", screen=screen,

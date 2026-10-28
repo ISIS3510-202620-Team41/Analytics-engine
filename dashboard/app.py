@@ -61,6 +61,22 @@ try:
     fa = requests.get(f"{url}/metrics/friend-availability", params=fa_params, headers=headers, timeout=10)
     fa.raise_for_status()
     data["friendAvailability"] = fa.json()
+    
+    # BQ8 uses its own rolling window, independent of the global period.
+    adoption_params = {
+        k: v for k, v in params.items()
+        if k not in {"from", "to"}
+    } | {"windowDays": 7}
+  
+    adoption = requests.get(
+        f"{url}/metrics/feature-adoption",
+        params=adoption_params,
+        headers=headers,
+        timeout=10,
+    )
+    adoption.raise_for_status()
+    data["featureAdoption"] = adoption.json()
+
 except requests.ConnectionError:
     st.error(f"Could not connect to the engine at {url}. Is `uvicorn main:app --port 8000` running?")
     st.stop()
@@ -146,6 +162,76 @@ c2.metric("Active users", fa.get("activeUsers", 0),
           help=f"With any event in the last {fa.get('activeDays', active_days)} days")
 c3.metric("Used it", fa.get("usersUsingFeature", 0))
 c4.metric("Created or joined a plan", pct(fa.get("planActionRate")))
+
+# ------------------------------------------------------------------ BQ8
+st.header("8 · Feature adoption among active users")
+
+ad = data.get("featureAdoption", {})
+screens = ad.get("screens", [])
+
+if not screens:
+    st.info("No screen usage data yet.")
+else:
+    st.metric("Active users (last 7 days)", ad.get("activeUsers", 0))
+
+    # Exclude undefined adoption rates from the chart.
+    chart_screens = [
+        s for s in screens
+        if s["adoptionRate"] is not None
+    ]
+
+    if chart_screens:
+        chart_df = pd.DataFrame([
+            {
+                "Screen": s["screen"],
+                "Usage (%)": s["adoptionRate"] * 100,
+            }
+            for s in chart_screens
+        ]).set_index("Screen")
+
+        st.bar_chart(
+            chart_df,
+            y_label="% of active users",
+        )
+        st.caption("Underutilization threshold: below 40%.")
+    else:
+        st.info("No active users in the selected window.")
+
+    # Highlight underutilized screens.
+    underutilized = [
+        s for s in screens if s["underutilized"]
+    ]
+
+    if underutilized:
+        names = ", ".join(s["screen"] for s in underutilized)
+        st.warning(f"Below 40% adoption: {names}")
+
+    # Keep a status table alongside the chart.
+    table = pd.DataFrame([
+        {
+            "Screen": s["screen"],
+            "Unique users": s["uniqueUsers"],
+            "Adoption": (
+                pct(s["adoptionRate"])
+                if s["adoptionRate"] is not None
+                else "No data"
+            ),
+            "Status": (
+                "Underutilized"
+                if s["underutilized"]
+                else "No data"
+                if s["adoptionRate"] is None
+                else "OK"
+            ),
+        }
+        for s in screens
+    ])
+
+    st.dataframe(
+        table,
+        hide_index=True,
+        use_container_width=True,
+    )
 
 # ------------------------------------------------------------------ BQ9
 st.header("9 · Category and Activity Demand by Time Slot (Commercial Partnerships)")
