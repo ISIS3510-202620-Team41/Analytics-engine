@@ -146,3 +146,36 @@ c2.metric("Active users", fa.get("activeUsers", 0),
           help=f"With any event in the last {fa.get('activeDays', active_days)} days")
 c3.metric("Used it", fa.get("usersUsingFeature", 0))
 c4.metric("Created or joined a plan", pct(fa.get("planActionRate")))
+
+# ------------------------------------------------------------------ BQ9
+st.header("9 · Category and Activity Demand by Time Slot (Commercial Partnerships)")
+cd = data.get("categoryDemand", {})
+slots = cd.get("timeSlots", [])
+if not cd.get("totalSelectionsOverall"):
+    st.info("No activity selections recorded yet.")
+else:
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Selections", cd.get("totalSelectionsOverall", 0))
+    c2.metric("Top Category Overall", cd.get("topCategoryOverall") or "—")
+    c3.metric("Peak Time Slot", cd.get("peakTimeSlot") or "—")
+
+    matrix_data = {}
+    for s in slots:
+        label = s["label"].split(" (")[0]
+        matrix_data[label] = {c["category"]: c["count"] for c in s.get("categories", [])}
+    if matrix_data:
+        st.subheader("Selections by Time Slot and Category")
+        st.bar_chart(pd.DataFrame(matrix_data).T, y_label="selections")
+
+    st.subheader("Commercial Partnership Opportunities")
+    table_rows = []
+    for s in slots:
+        top_acts = ", ".join(f"{a['title']} ({a['count']})" for a in s.get("topActivities", [])) or "—"
+        table_rows.append({
+            "Franja Horaria": s["label"],
+            "Selecciones": s["totalSelections"],
+            "Categoría Líder": (s["topCategory"] or "—") + (" (Empate)" if s.get("tie") else ""),
+            "Actividades Principales": top_acts,
+            "Oportunidad de Alianza / Monetización": s.get("monetizationOpportunity", "—"),
+        })
+    st.dataframe(pd.DataFrame(table_rows), hide_index=True, use_container_width=True)
