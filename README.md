@@ -3,7 +3,8 @@
 FastAPI service that receives events from the mobile apps (Kotlin and Flutter) and the Spring backend, stores them in SQLite and computes the business metrics shown on the dashboard.
 
 ```
-Mobile apps ── app_loading_time, screen_view, crash ──────────┐
+Mobile apps ── app_loading_time, screen_view, feature_used,
+               crash                                ──────────┐
                                                               ▼
 Spring backend ── recommendation_shown, recommended_activity_selected,
                   friend_availability_used ─────────────▶  Analytics engine (FastAPI + SQLite)
@@ -75,6 +76,7 @@ All events share these fields:
 |---|---|---|
 | `app_loading_time` | `loadType` (`cold_start`/`warm_start`/`screen`), `screen` (required if `loadType=screen`), `durationMs` | Apps |
 | `screen_view` | `screen` | Apps |
+| `feature_used` | `feature` (id estable), `action?`, `screen?` | Apps (cuando el usuario realiza una acción significativa de una funcionalidad) |
 | `crash` | `screen`, `component?`, `exceptionType?` | Apps (sent on the next launch) |
 | `recommendation_shown` | `recommendationId` (one per load), `freeTimeMinutes?` | Backend |
 | `recommended_activity_selected` | `activityId`, `category`, `freeTimeMinutes?`, `recommendationId?`, `title?`, `price?`. Emitted when the user **joins** a recommended activity | Backend |
@@ -103,7 +105,7 @@ Each metric is an independent feature (see `routes/` and `metrics/`); its defini
 | 3 | What proportion of recommended activities do students select during their free time? | `/metrics/selection-rate` | Unique (user, activity) joins to a recommended activity / recommendation loads with free time. Also returns `loadSelectionRate` (loads with at least one join), which never exceeds 1 |
 | 4 | Which recommended category is selected most for each free time duration? | `/metrics/category-by-free-time` | Winning category in `0-30`, `30-60`, `60-120` and `120+` minutes, with a tie flag. Ranges are configurable (`buckets=`) |
 | 5 | What percentage of active users use Friend Availability? | `/metrics/friend-availability` | Users with a `friend_availability_used` event / active users in the last `activeDays` days (default 7). Also returns the rate of users who created or joined a plan |
-| 8 | Which application screens are accessed by fewer than 40% of active users? | `/metrics/feature-adoption` | Over the rolling last `windowDays` days (default 7), divides the distinct users who viewed each screen (`screen_view`) by the distinct active users with any event in the same window. Returns each screen's adoption rate and flags screens below 40%. |
+| 8 | Which application screens and features are accessed by fewer than 40% of active users? | `/metrics/feature-adoption` | Unique users with a `screen_view` per screen and `feature_used` per feature, divided by active users in the last `windowDays` days (default 7). Returns adoption rates and flags elements below 0.40. |
 | 9 | What categories and activities have the highest demand across time slots for commercial partnerships? | `/metrics/category-demand` | Selections aggregated into 5 campus time slots (Morning, Midday, Afternoon, Evening, Off-hours), ranking categories, identifying top activities, and recommending monetization partnerships. Accepts `tz_offset=` (default -5). |
 
 Common filters:
