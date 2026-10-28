@@ -12,11 +12,11 @@ summary_key = "featureAdoption"
 @router.get("/feature-adoption")
 def get_feature_adoption(
     filters: FiltersDep,
-    windowDays: Annotated[int, Query(ge=1)] = 7,
+    windowDays: Annotated[int, Query(ge=1, le=90)] = 7,
 ):
-    """BQ8: adopción por pantalla entre usuarios activos."""
+    """BQ8: adopción de pantallas y funcionalidades entre usuarios activos."""
     with connect() as conn:
-        return feature_adoption(conn, filters, window_days=windowDays)
+        return feature_adoption(conn, filters, windowDays)
 
 
 def summary(conn, filters):
