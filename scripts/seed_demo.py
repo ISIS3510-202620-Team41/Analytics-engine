@@ -25,6 +25,24 @@ ACTIVITIES_CATALOG = [
     ("Noche de Karaoke y Pizza", "ENTRETENIMIENTO", "$20.000 COP"),
 ]
 
+FEATURE_USAGE = {
+    "Recommendations": (
+        "activity_recommendations",
+        "load_recommendations",
+        0.50,
+    ),
+    "FriendAvailability": (
+        "friend_availability",
+        "check_availability",
+        0.30,
+    ),
+    "ActivityDetail": (
+        "activity_joining",
+        "join_activity",
+        0.15,
+    ),
+}
+
 
 def build_events(users: int, days: int, rng: random.Random) -> list[dict]:
     now = datetime.now(timezone.utc)
@@ -53,7 +71,15 @@ def build_events(users: int, days: int, rng: random.Random) -> list[dict]:
             add(user, at, version, "app_loading_time", loadType="cold_start",
                 durationMs=max(200, int(rng.gauss(1400 if version == "0.9.0" else 850, 250))))
             for screen in rng.sample(screens_for_user, 3):
+
                 add(user, at, version, "screen_view", screen=screen)
+                feature_usage = FEATURE_USAGE.get(screen)
+                
+                if feature_usage:
+                    feature, action, probability = feature_usage
+                    if rng.random() < probability:
+                        add(user,at,version,"feature_used",feature=feature,action=action,screen=screen,)
+
                 if rng.random() < (0.12 if screen == "ActivityDetail" else 0.02):
                     add(user, at, version, "crash", screen=screen,
                         component="btn_join" if screen == "ActivityDetail" else None,

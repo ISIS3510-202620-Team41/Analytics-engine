@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS events (
     occurred_at        TEXT NOT NULL,
     received_at        TEXT NOT NULL,
     screen             TEXT,
+    feature            TEXT,
     component          TEXT,
     exception_type     TEXT,
     load_type          TEXT,
@@ -36,7 +37,7 @@ CREATE INDEX IF NOT EXISTS idx_events_user_time ON events (user_id, occurred_at)
 
 COLUMNS = (
     "event_id", "event_type", "user_id", "session_id", "app_version", "occurred_at", "received_at",
-    "screen", "component", "exception_type", "load_type", "duration_ms", "activity_id", "category",
+    "screen", "feature", "component", "exception_type", "load_type", "duration_ms", "activity_id", "category",
     "free_time_minutes", "recommendation_id", "action", "title", "price", "activity_duration_minutes"
 )
 
@@ -64,6 +65,8 @@ def connect():
                 conn.execute("ALTER TABLE events ADD COLUMN price TEXT")
             if "activity_duration_minutes" not in existing:
                 conn.execute("ALTER TABLE events ADD COLUMN activity_duration_minutes INTEGER")
+            if "feature" not in existing:
+                conn.execute("ALTER TABLE events ADD COLUMN feature TEXT")
             _initialized.add(key)
         yield conn
         conn.commit()
