@@ -76,7 +76,7 @@ All events share these fields:
 |---|---|---|
 | `app_loading_time` | `loadType` (`cold_start`/`warm_start`/`screen`), `screen` (required if `loadType=screen`), `durationMs` | Apps |
 | `screen_view` | `screen` | Apps |
-| `feature_used` | `feature` (id estable), `action?`, `screen?` | Apps (cuando el usuario realiza una acción significativa de una funcionalidad) |
+| `feature_used` | `feature`, `action?`, `screen?` | Apps (whenever the user makes a significant action of a feature) |
 | `crash` | `screen`, `component?`, `exceptionType?` | Apps (sent on the next launch) |
 | `recommendation_shown` | `recommendationId` (one per load), `freeTimeMinutes?` | Backend |
 | `recommended_activity_selected` | `activityId`, `category`, `freeTimeMinutes?`, `recommendationId?`, `title?`, `price?`. Emitted when the user **joins** a recommended activity | Backend |
