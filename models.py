@@ -8,6 +8,14 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from filters import to_db_time, to_utc
 
+NetworkQuality = Literal[
+    "good",
+    "fair",
+    "poor",
+    "offline",
+    "unknown",
+]
+
 # Si el reloj del telefono va adelantado mas que esto, se usa la hora del servidor.
 MAX_CLOCK_SKEW = timedelta(minutes=5)
 
@@ -37,6 +45,7 @@ class AppLoadingTimeEvent(_BaseEvent):
     loadType: Literal["cold_start", "warm_start", "screen"]
     screen: str | None = Field(default=None, max_length=100)
     durationMs: int = Field(ge=0, le=600_000)
+    networkQuality: NetworkQuality = "unknown"
 
     @model_validator(mode="after")
     def _screen_required_for_screen_loads(self):
@@ -61,6 +70,7 @@ class RecommendationShownEvent(_BaseEvent):
     eventType: Literal["recommendation_shown"]
     recommendationId: str = Field(min_length=1, max_length=100)   # uno por carga de la lista
     freeTimeMinutes: int | None = Field(default=None, ge=0)
+    networkQuality: NetworkQuality = "unknown"
 
 
 class RecommendedActivitySelectedEvent(_BaseEvent):
@@ -70,6 +80,7 @@ class RecommendedActivitySelectedEvent(_BaseEvent):
     category: Category
     freeTimeMinutes: int | None = Field(default=None, ge=0)
     recommendationId: str | None = Field(default=None, max_length=100)
+    networkQuality: NetworkQuality = "unknown"
 
     @field_validator("category", mode="before")
     @classmethod
@@ -135,4 +146,5 @@ def to_row(event, received_at: datetime) -> dict:
         "free_time_minutes": getattr(event, "freeTimeMinutes", None),
         "recommendation_id": getattr(event, "recommendationId", None),
         "action": getattr(event, "action", None),
+        "network_quality": getattr( event, "networkQuality", "unknown"),
     }
