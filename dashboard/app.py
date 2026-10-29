@@ -14,7 +14,6 @@ import streamlit as st
 
 st.set_page_config(page_title="Llamalla Analytics", page_icon="📊", layout="wide")
 
-
 def pct(value) -> str:
     return "no data" if value is None else f"{value * 100:.1f}%"
 
@@ -146,3 +145,100 @@ c2.metric("Active users", fa.get("activeUsers", 0),
           help=f"With any event in the last {fa.get('activeDays', active_days)} days")
 c3.metric("Used it", fa.get("usersUsingFeature", 0))
 c4.metric("Created or joined a plan", pct(fa.get("planActionRate")))
+
+
+# ------------------------------------------------------------------ BQ10
+st.header("10 · Network quality impact on loading and selection")
+
+ni = data.get("networkImpact", {})
+rows = ni.get("byNetworkQuality", [])
+
+if not rows:
+    st.info("No network quality measurements yet.")
+else:
+    df = pd.DataFrame(rows)
+
+    # Resumen de los datos disponibles
+    total_loads = int(df["recommendationLoads"].sum())
+    total_samples = int(df["loadingSamples"].sum())
+
+    c1, c2 = st.columns(2)
+    c1.metric("Recommendation loads", total_loads)
+    c2.metric("Loading time samples", total_samples)
+
+    # Comparacion del tiempo promedio de carga
+    st.subheader("Average recommendation loading time")
+
+    loading_df = df.dropna(
+        subset=["averageLoadingMs"]
+    ).copy()
+
+    if loading_df.empty:
+        st.info("No loading time measurements yet.")
+    else:
+        chart_df = loading_df.set_index(
+            "networkQuality"
+        )[["averageLoadingMs"]]
+
+        st.bar_chart(
+            chart_df,
+            y_label="Milliseconds",
+        )
+
+    # Comparacion de las tasas de seleccion
+    st.subheader("Selection rate by network quality")
+
+    selection_df = df.dropna(
+        subset=["selectionRate"]
+    ).copy()
+
+    if selection_df.empty:
+        st.info("No linked recommendation selections yet.")
+    else:
+        chart_df = selection_df.set_index(
+            "networkQuality"
+        )[["selectionRate"]]
+
+        st.bar_chart(
+            chart_df,
+            y_label="Proportion (0 to 1)",
+        )
+
+    # Tabla detallada
+    st.subheader("Network quality details")
+
+    table = df[
+        [
+            "networkQuality",
+            "averageLoadingMs",
+            "loadingSamples",
+            "recommendationLoads",
+            "loadsWithSelection",
+            "selectionRate",
+        ]
+    ].copy()
+
+    table.columns = [
+        "Network quality",
+        "Average loading (ms)",
+        "Loading samples",
+        "Recommendation loads",
+        "Loads with selection",
+        "Selection rate",
+    ]
+
+    table["Selection rate"] = table[
+        "Selection rate"
+    ].map(
+        lambda value: (
+            "No data"
+            if pd.isna(value)
+            else f"{value * 100:.1f}%"
+        )
+    )
+
+    st.dataframe(
+        table,
+        hide_index=True,
+        use_container_width=True,
+    )
