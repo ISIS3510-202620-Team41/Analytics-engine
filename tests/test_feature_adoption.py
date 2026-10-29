@@ -266,8 +266,9 @@ class FeatureColumnMigrationTests(unittest.TestCase):
             try:
                 os.environ["ANALYTICS_DB_PATH"] = str(database_path)
 
-                # Simula la tabla anterior, que todavía no tiene feature.
-                with sqlite3.connect(database_path) as legacy_conn:
+                # Crear una base antigua que no tiene la columna feature.
+                legacy_conn = sqlite3.connect(str(database_path))
+                try:
                     legacy_conn.execute("""
                         CREATE TABLE events (
                             event_id TEXT PRIMARY KEY,
@@ -292,11 +293,17 @@ class FeatureColumnMigrationTests(unittest.TestCase):
                             activity_duration_minutes INTEGER
                         )
                     """)
+                    legacy_conn.commit()
+                finally:
+                    # El context manager de sqlite3 no cierra la conexión.
+                    legacy_conn.close()
 
+                # Abrir la base con el código de la aplicación para ejecutar
+                # la migración.
                 with connect() as conn:
                     columns = {
-                        result["name"]
-                        for result in conn.execute("PRAGMA table_info(events)")
+                        row["name"]
+                        for row in conn.execute("PRAGMA table_info(events)")
                     }
 
                 self.assertIn("feature", columns)

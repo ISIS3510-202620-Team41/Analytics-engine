@@ -9,7 +9,7 @@ DEFAULT_WINDOW_DAYS = 7
 UNDERUTILIZED_THRESHOLD = 0.40
 MAX_WINDOW_DAYS = 90
 
-def _known_values(conn, filters: Filters, event_type: str)
+def _known_values(conn, filters: Filters, event_type: str, column: str):
     """Recupera nombres observados historicamente, sin limitarse a la ventana actual."""
 
     where, params = build_where(conn,filters,(event_type,),)
@@ -27,7 +27,7 @@ def _known_values(conn, filters: Filters, event_type: str)
 
     return {row[column] for row in rows}
 
-def _users_by_value(conn,filters: Filters, event_type: str, column: str,) -> dict[str, int]
+def _users_by_value(conn,filters: Filters, event_type: str, column: str,):
     """Cuenta los usuarios unicos por pantalla o funcionalidad dentro de la ventana"""
     where, params = build_where(conn, filters, (event_type,),)
 
@@ -46,7 +46,7 @@ def _users_by_value(conn,filters: Filters, event_type: str, column: str,) -> dic
 
     return {row[column]: row["users"] for row in rows}
 
-def _adoption_entries(catalog: tuple[str,...], historically_known: set[str], users_by_value: dict[str, int], active_users: int, key: str) -> list[dict]:
+def _adoption_entries(catalog: tuple[str,...], historically_known: set[str], users_by_value: dict[str, int], active_users: int, key: str):
     """Combina el catalogo e historial, incluyendo los elementos con 0 uso reciente"""
     names = set(catalog) | historically_known | set(users_by_value)
     entries = []
@@ -55,7 +55,7 @@ def _adoption_entries(catalog: tuple[str,...], historically_known: set[str], use
         users = users_by_value.get(name, 0)
         rate = users / active_users if active_users else None
         
-        entries.appedn(
+        entries.append(
             {
                 key: name,
                 "uniqueUsers": users,
@@ -77,7 +77,7 @@ def _adoption_entries(catalog: tuple[str,...], historically_known: set[str], use
 
     return entries
 
-def feature_adoption(conn, f:Filters, window_days = DEFAULT_WINDOW_DAYS) -> dict:
+def feature_adoption(conn, f:Filters, window_days: int = DEFAULT_WINDOW_DAYS, now: datetime | None = None):
     """Devuelve la adopción por pantalla y funcionalidad en una ventana movible.
 
     Usuario activo: usuario con al menos un evento de cualquier tipo dentro
@@ -93,14 +93,14 @@ def feature_adoption(conn, f:Filters, window_days = DEFAULT_WINDOW_DAYS) -> dict
     El filtro `to`, si existe, define el final exclusivo de la ventana.
     """
     
-    if window_days < 1 <= MAX_WINDOW_DAYS:
+    if not 1 <= window_days <= MAX_WINDOW_DAYS:
         raise ValueError(f"window_days debe estar entre 1 y {MAX_WINDOW_DAYS}")
 
-    end = to_utc(now or datetime.now(timezone.utc))
+    end = to_utc(f.to or now or datetime.now(timezone.utc))
     start = end - timedelta(days=window_days)
 
     # La ventana movil sustituye el from pero se mantiene le to y filtros
-    window = replace(f, from=start)
+    window = replace(f, from_=start, to=end)
 
     where_active, params_active = build_where(conn,window,None,)
 
@@ -112,15 +112,35 @@ def feature_adoption(conn, f:Filters, window_days = DEFAULT_WINDOW_DAYS) -> dict
         WHERE {where_active}
           AND TRIM(user_id) <> ''
         """,
-        params,
+        params_active,
     ).fetchone()[0]
 
     #Catalogo historico sin restricciones de timepo per con los filtros seleccionados
 
-    catalog_filters = replace(f, from_=None, to=None)
+    catalog_filters = Filters(app_version=f.app_version, min_app_version=f.min_app_version)
 
-    historically_known_screens = _known_values(conn,catalog_filters,"screen_view","screen",)
-    historically_known_features = _known_values(conn,catalog_filters,"features_used","feature",)
+    historically_known_screens = _known_values(conn,catalog_filters,"screen_view","screen")
+
+    # Funcionalidades conocidas históricamente.
+    # Esta consulta no debe utilizar la ventana móvil de siete días.
+    where_features, params_features = build_where(
+        conn,
+        catalog_filters,
+        ("feature_used",),
+    )
+
+    feature_rows = conn.execute(
+        f"""
+        SELECT DISTINCT feature
+        FROM events
+        WHERE {where_features}
+        AND feature IS NOT NULL
+        AND TRIM(feature) <> ''
+        """,
+        params_features,
+    )
+
+    historically_known_features = {row["feature"] for row in feature_rows}
 
     screen_users = _users_by_value(conn,window,"screen_view","screen",)
     feature_users = _users_by_value(conn,window,"feature_used","feature",)
