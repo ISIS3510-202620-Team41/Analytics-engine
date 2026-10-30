@@ -60,3 +60,7 @@ def parse_edges(raw: str) -> list[int]:
 
 def free_time_edges() -> list[int]:
     return parse_edges(os.getenv("ANALYTICS_FREE_TIME_BUCKETS", "30,60,120"))
+
+def time_to_select_edges() -> list[int]:
+    """BQ6: cortes del histograma, en segundos."""
+    return parse_edges(os.getenv("ANALYTICS_TIME_TO_SELECT_BUCKETS", "10,30,60,180"))
