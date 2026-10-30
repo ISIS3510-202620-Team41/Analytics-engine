@@ -35,7 +35,7 @@ def network_impact(conn, f: Filters) -> dict:
         FROM events
         WHERE {where_load}
             AND load_type = 'screen'
-            AND screen = 'recommendations'
+            AND LOWER(screen) = 'recommendations'
         """,
         p_load,
     ).fetchall()
@@ -152,6 +152,6 @@ def network_impact(conn, f: Filters) -> dict:
         })
 
     return {
-        "loadingScreen": "recommendations",
+        "loadingScreen": "Recommendations",
         "byNetworkQuality": by_quality,
     }
