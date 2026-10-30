@@ -90,8 +90,12 @@ def build_events(users: int, days: int, rng: random.Random) -> list[dict]:
             if free > 0 and rng.random() < 0.35:
                 act = rng.choice(ACTIVITIES_CATALOG)
                 act_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, act[0]))
-                add(user, at, None, "recommended_activity_selected", activityId=act_id,
-                    category=act[1], title=act[0], price=act[2], freeTimeMinutes=free, recommendationId=rec_id)
+                # BQ6 mide el intervalo entre ver la lista y unirse: la mayoria decide rapido
+                # y una cola se demora, para que el histograma no quede en un solo rango.
+                thinking = rng.choice([3, 6, 9, 14, 22, 38, 55, 95, 150, 240])
+                add(user, at + timedelta(seconds=thinking), None, "recommended_activity_selected",
+                    activityId=act_id, category=act[1], title=act[0], price=act[2],
+                    freeTimeMinutes=free, recommendationId=rec_id)
             if rng.random() < 0.25:
                 add(user, at, None, "friend_availability_used",
                     action=rng.choice(["viewed", "viewed", "plan_created", "plan_joined"]))

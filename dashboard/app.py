@@ -18,6 +18,10 @@ def pct(value) -> str:
     return "no data" if value is None else f"{value * 100:.1f}%"
 
 
+def secs(value) -> str:
+    return "no data" if value is None else f"{value:.1f} s"
+
+
 @st.cache_data(ttl=20, show_spinner=False)
 def fetch_summary(url: str, key: str, params: tuple) -> dict:
     headers = {"X-API-Key": key} if key else {}
@@ -134,21 +138,40 @@ c3.metric("Loads shown", sr.get("shown", 0))
 c4.metric("Loads with at least one join", pct(sr.get("loadSelectionRate")), help="Never exceeds 100%")
 
 # ------------------------------------------------------------------ BQ4
+# Que responde: con X minutos libres, ¿que tipo de plan escoge el estudiante?
+# Se dibuja como barras apiladas por rango para poder comparar de un vistazo si la
+# categoria ganadora cambia al crecer el tiempo disponible, que es el patron que el
+# motor de recomendaciones necesita conocer.
 st.header("4 · Most selected category by free time")
 cat = data.get("categoryByFreeTime", {})
 buckets = cat.get("buckets", [])
+# any(total) y no "if buckets": el motor SIEMPRE devuelve los rangos, aunque esten
+# vacios. Preguntar por los totales distingue "no hay datos" de "hay rangos en cero".
 if not any(b["total"] for b in buckets):
     st.info("No selections with a free-time duration yet.")
 else:
+    # Matriz rango x categoria. El .T transpone para que cada FILA sea un rango: asi
+    # st.bar_chart pone los rangos en el eje X y apila las categorias dentro de cada uno.
     matrix = pd.DataFrame(
         {b["label"] + " min": {c["category"]: c["count"] for c in b["categories"]} for b in buckets}).T
+    # Categorical conserva el orden en que vienen del motor (0-30, 30-60, 60-120, 120+).
+    # Sin esto pandas ordena las etiquetas como TEXTO y "120+" queda de segundo, lo que
+    # rompe la lectura: el punto de la grafica es ver la progresion al subir los minutos.
+    matrix.index = pd.CategoricalIndex(matrix.index, categories=matrix.index, ordered=True)
     st.bar_chart(matrix, y_label="selections")
+    # La tabla repite la conclusion en texto porque la grafica apilada no deja leer con
+    # precision quien gano cuando dos categorias quedan casi iguales.
     winners = pd.DataFrame([{
         "Range (min)": b["label"],
+        # El guion cubre el rango sin datos, donde topCategory viene en None.
         "Top category": b["topCategory"] or "—",
+        # Se muestra el empate para que nadie lea el ganador como si dominara: lo decidio
+        # el desempate alfabetico, no los usuarios.
         "Tie": "yes" if b["tie"] else "",
         "Selections": b["total"]} for b in buckets])
     st.dataframe(winners, hide_index=True, use_container_width=True)
+    # Solo se escribe la nota si de verdad quedo algo fuera, para no ensuciar la vista
+    # con un "0 selecciones excluidas" en el caso normal.
     if cat.get("selectionsWithoutFreeTime"):
         st.caption(f"{cat['selectionsWithoutFreeTime']} selections without a duration are not in the chart.")
 
@@ -161,6 +184,54 @@ c2.metric("Active users", fa.get("activeUsers", 0),
           help=f"With any event in the last {fa.get('activeDays', active_days)} days")
 c3.metric("Used it", fa.get("usersUsingFeature", 0))
 c4.metric("Created or joined a plan", pct(fa.get("planActionRate")))
+
+# ------------------------------------------------------------------ BQ6
+st.header("6 · Time from seeing recommendations to joining one")
+tts = data.get("timeToSelect", {})
+if not tts.get("samples"):
+    st.info("No recommendation load has ended in a join yet.")
+else:
+    # Los tres numeros van juntos a proposito: el promedio resume, el p50 dice que le
+    # pasa al usuario tipico y el p95 expone la cola de los que se atascan. Mirar solo
+    # el promedio esconde justamente a quienes hay que arreglarles la experiencia.
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Average", secs(tts.get("averageSeconds")),
+              # El help deja escrita la unidad de medida en la propia vista, para que
+              # nadie interprete el numero como "por cada join".
+              help="One sample per recommendation load, measured to its first join")
+    c2.metric("p50", secs(tts.get("p50Seconds")))
+    c3.metric("p95", secs(tts.get("p95Seconds")))
+    # Samples da el peso estadistico: un p95 sacado de 4 muestras no se puede defender.
+    c4.metric("Samples", tts.get("samples", 0))
+
+    histogram = pd.DataFrame(tts["histogram"])
+    # Categorical conserva el orden en que vienen los rangos del motor. Sin esto pandas
+    # ordena las etiquetas como TEXTO y "180+" quedaria entre "10-30" y "30-60",
+    # destruyendo la lectura de la distribucion.
+    histogram["Range (s)"] = pd.Categorical(
+        histogram["label"], categories=histogram["label"], ordered=True)
+    # El histograma es el corazon de esta BQ: el promedio solo no distingue "todos tardan
+    # 60 s" de "la mitad tarda 5 s y la otra mitad 115 s", y cada caso pide otro arreglo.
+    st.bar_chart(histogram.set_index("Range (s)")["count"], y_label="joins")
+
+    # La tabla acompana a la grafica con el numero exacto y el porcentaje, que no se
+    # pueden leer con precision de una barra.
+    table = histogram[["label", "count", "share"]].copy()
+    table.columns = ["Range (s)", "Joins", "Share"]
+    table["Share"] = table["Share"].map(pct)
+    st.dataframe(table, hide_index=True, use_container_width=True)
+
+    # Sin esta nota, alguien compara el total de BQ6 con el de BQ3, ve que no cuadran y
+    # asume que la metrica esta mal. Aqui queda explicado dato por dato que se excluyo.
+    ignored = [
+        (tts.get("loadsWithoutSelection"), "loads ended without a join"),
+        (tts.get("selectionsWithoutLoad"), "joins whose recommendation load is outside this period"),
+        (tts.get("selectionsWithoutRecommendationId"), "joins made outside the recommendations screen"),
+        (tts.get("discardedOutOfOrder"), "joins discarded because the device clock was behind"),
+    ]
+    note = " · ".join(f"{n} {text}" for n, text in ignored if n)
+    if note:
+        st.caption(f"Not in the chart: {note}.")
 
 # ------------------------------------------------------------------ BQ7
 st.header("7 · Activity Duration vs Available Free Time")
@@ -296,7 +367,7 @@ else:
         hide_index=True,
         use_container_width=True,
     )
-    )
+    
 
 # ------------------------------------------------------------------ BQ9
 st.header("9 · Category and Activity Demand by Time Slot (Commercial Partnerships)")
