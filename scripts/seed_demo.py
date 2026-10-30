@@ -14,6 +14,35 @@ SCREENS = ["Home", "Recommendations", "FriendAvailability", "ActivityDetail", "P
 CATEGORIES = ["DEPORTES", "ESTUDIO", "CULTURA", "ENTRETENIMIENTO"]
 VERSIONS = ["0.9.0", "1.0.0", "1.1.0"]
 
+ACTIVITIES_CATALOG = [
+    ("Torneo Relámpago de Fútbol 5", "DEPORTES", "$15.000 COP"),
+    ("Grupo de Estudio: Cálculo Integral", "ESTUDIO", "Gratis"),
+    ("Cineclub: Ciclo Cine Francés", "CULTURA", "$5.000 COP"),
+    ("Tarde de Juegos de Mesa y Café", "ENTRETENIMIENTO", "$8.000 COP"),
+    ("Entrenamiento Funcional en Cancha", "DEPORTES", "Gratis"),
+    ("Club de Lectura: Literatura Contemporánea", "CULTURA", "Gratis"),
+    ("Taller de Algoritmos en Python", "ESTUDIO", "$10.000 COP"),
+    ("Noche de Karaoke y Pizza", "ENTRETENIMIENTO", "$20.000 COP"),
+]
+
+FEATURE_USAGE = {
+    "Recommendations": (
+        "activity_recommendations",
+        "load_recommendations",
+        0.50,
+    ),
+    "FriendAvailability": (
+        "friend_availability",
+        "check_availability",
+        0.30,
+    ),
+    "ActivityDetail": (
+        "activity_joining",
+        "join_activity",
+        0.15,
+    ),
+}
+
 
 def build_events(users: int, days: int, rng: random.Random) -> list[dict]:
     now = datetime.now(timezone.utc)
@@ -23,16 +52,34 @@ def build_events(users: int, days: int, rng: random.Random) -> list[dict]:
         events.append({"eventId": str(uuid.uuid4()), "eventType": event_type, "userId": user,
                        "appVersion": version, "timestamp": at.isoformat(), **fields})
 
-    for _ in range(users):
+    for user_index in range(users):
         user, version = str(uuid.uuid4()), rng.choice(VERSIONS)
+
+        #Profile se le asigna solamente al 25% inicial de la cohorte
+        low_adoption_cohort = user_index < max(1, int(users*0.25))
+        #Agregado para BQ8
+        screens_for_user = (
+            SCREENS
+            if low_adoption_cohort
+            else SCREENS[:-1]
+        )
+
         for day in range(days):
             if rng.random() < 0.4:
                 continue                                    # ese dia no uso la app
             at = now - timedelta(days=day, minutes=rng.randint(10, 600))
             add(user, at, version, "app_loading_time", loadType="cold_start",
                 durationMs=max(200, int(rng.gauss(1400 if version == "0.9.0" else 850, 250))))
-            for screen in rng.sample(SCREENS, 3):
+            for screen in rng.sample(screens_for_user, 3):
+
                 add(user, at, version, "screen_view", screen=screen)
+                feature_usage = FEATURE_USAGE.get(screen)
+                
+                if feature_usage:
+                    feature, action, probability = feature_usage
+                    if rng.random() < probability:
+                        add(user,at,version,"feature_used",feature=feature,action=action,screen=screen,)
+
                 if rng.random() < (0.12 if screen == "ActivityDetail" else 0.02):
                     add(user, at, version, "crash", screen=screen,
                         component="btn_join" if screen == "ActivityDetail" else None,
@@ -41,8 +88,10 @@ def build_events(users: int, days: int, rng: random.Random) -> list[dict]:
             rec_id = str(uuid.uuid4())
             add(user, at, None, "recommendation_shown", recommendationId=rec_id, freeTimeMinutes=free)
             if free > 0 and rng.random() < 0.35:
-                add(user, at, None, "recommended_activity_selected", activityId=str(uuid.uuid4()),
-                    category=rng.choice(CATEGORIES), freeTimeMinutes=free, recommendationId=rec_id)
+                act = rng.choice(ACTIVITIES_CATALOG)
+                act_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, act[0]))
+                add(user, at, None, "recommended_activity_selected", activityId=act_id,
+                    category=act[1], title=act[0], price=act[2], freeTimeMinutes=free, recommendationId=rec_id)
             if rng.random() < 0.25:
                 add(user, at, None, "friend_availability_used",
                     action=rng.choice(["viewed", "viewed", "plan_created", "plan_joined"]))

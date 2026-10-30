@@ -58,6 +58,32 @@ class ScreenViewEvent(_BaseEvent):
     eventType: Literal["screen_view"]
     screen: str = Field(min_length=1, max_length=100)
 
+class FeatureUsedEvent(_BaseEvent):
+    eventType: Literal["feature_used"]
+
+    # Identificador, por ejemplo "friend_availability".
+    feature: str = Field(
+        min_length=1,
+        max_length=100,
+        pattern=r"^[a-z][a-z0-9_]*$",
+    )
+
+    # Acción concreta dentro de la funcionalidad, si aplica.
+    action: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        pattern=r"^[a-z][a-z0-9_]*$",
+    )
+
+    # Pantalla desde la que se utilizó la funcionalidad.
+    screen: str | None = Field(default=None, max_length=100)
+
+    @field_validator("feature", "action", mode="before")
+    @classmethod
+    def _normalize_identifiers(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
 
 class CrashEvent(_BaseEvent):
     eventType: Literal["crash"]
@@ -81,6 +107,9 @@ class RecommendedActivitySelectedEvent(_BaseEvent):
     freeTimeMinutes: int | None = Field(default=None, ge=0)
     recommendationId: str | None = Field(default=None, max_length=100)
     networkQuality: NetworkQuality = "unknown"
+    title: str | None = Field(default=None, max_length=200)
+    price: str | None = Field(default=None, max_length=50)
+    activityDurationMinutes: int | None = Field(default=None, ge=0)
 
     @field_validator("category", mode="before")
     @classmethod
@@ -98,6 +127,7 @@ AnalyticsEvent = Annotated[
     Union[
         AppLoadingTimeEvent,
         ScreenViewEvent,
+        FeatureUsedEvent,
         CrashEvent,
         RecommendationShownEvent,
         RecommendedActivitySelectedEvent,
@@ -137,6 +167,7 @@ def to_row(event, received_at: datetime) -> dict:
         "occurred_at": to_db_time(occurred_at),
         "received_at": to_db_time(received_at),
         "screen": getattr(event, "screen", None),
+        "feature": getattr(event, "feature", None),
         "component": getattr(event, "component", None),
         "exception_type": getattr(event, "exceptionType", None),
         "load_type": getattr(event, "loadType", None),
@@ -147,4 +178,7 @@ def to_row(event, received_at: datetime) -> dict:
         "recommendation_id": getattr(event, "recommendationId", None),
         "action": getattr(event, "action", None),
         "network_quality": getattr( event, "networkQuality", "unknown"),
+        "title": getattr(event, "title", None),
+        "price": getattr(event, "price", None),
+        "activity_duration_minutes": getattr(event, "activityDurationMinutes", None),
     }
