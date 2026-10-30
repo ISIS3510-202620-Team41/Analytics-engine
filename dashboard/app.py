@@ -491,3 +491,8 @@ else:
             else f"{value * 100:.1f}%"
         )
     )
+    st.dataframe(
+        table,
+        hide_index=True,
+        use_container_width=True,
+    )
