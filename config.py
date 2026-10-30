@@ -11,6 +11,23 @@ CATEGORIES = ("DEPORTES", "ESTUDIO", "CULTURA", "ENTRETENIMIENTO")
 
 FRIEND_PLAN_ACTIONS = ("plan_created", "plan_joined")
 
+# Catálogo inicial de pantallas para BQ8.
+# Debe mantenerse sincronizado con los nombres enviados por Flutter/Kotlin.
+SCREEN_CATALOG = (
+    "Home",
+    "Recommendations",
+    "FriendAvailability",
+    "ActivityDetail",
+    "Profile",
+)
+
+# Catálogo inicial de funcionalidades para BQ8.
+# Agregar aquí cada nueva funcionalidad que se instrumente en las apps.
+FEATURE_CATALOG = (
+    "activity_recommendations",
+    "friend_availability",
+    "activity_joining",
+)
 
 def db_path() -> Path:
     return Path(os.getenv("ANALYTICS_DB_PATH", "data/analytics.db"))

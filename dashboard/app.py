@@ -60,6 +60,22 @@ try:
     fa = requests.get(f"{url}/metrics/friend-availability", params=fa_params, headers=headers, timeout=10)
     fa.raise_for_status()
     data["friendAvailability"] = fa.json()
+
+    # BQ8 uses its own rolling window, independent of the global period.
+    adoption_params = {
+        k: v for k, v in params.items()
+        if k not in {"from", "to"}
+    } | {"windowDays": 7}
+
+    adoption = requests.get(
+        f"{url}/metrics/feature-adoption",
+        params=adoption_params,
+        headers=headers,
+        timeout=10,
+    )
+    adoption.raise_for_status()
+    data["featureAdoption"] = adoption.json()
+
 except requests.ConnectionError:
     st.error(f"Could not connect to the engine at {url}. Is `uvicorn main:app --port 8000` running?")
     st.stop()
@@ -146,8 +162,176 @@ c2.metric("Active users", fa.get("activeUsers", 0),
 c3.metric("Used it", fa.get("usersUsingFeature", 0))
 c4.metric("Created or joined a plan", pct(fa.get("planActionRate")))
 
+# ------------------------------------------------------------------ BQ7
+st.header("7 · Activity Duration vs Available Free Time")
+dm = data.get("durationMatch", {})
 
-# ------------------------------------------------------------------ BQ10
+if not dm.get("totalUniqueSelections"):
+    st.info("No activity selections recorded yet to evaluate duration match.")
+else:
+    c1, c2, c3, c4 = st.columns(4)
+
+    valid_selections = dm.get("validSelections", 0)
+
+    # Check for valid data before displaying rates using standard blocks
+    if valid_selections == 0:
+        match_str = "No valid data"
+        overflow_str = "No valid data"
+    else:
+        match_str = pct(dm.get("matchRate"))
+        overflow_str = pct(dm.get("overflowRate"))
+
+    c1.metric("Overall Match Rate", match_str, help="Proportion of valid selections where activity duration <= free time")
+    c2.metric("Overall Overflow Rate", overflow_str, help="Proportion of valid selections exceeding available free time")
+    c3.metric("Missing Data Rate", pct(dm.get("missingRate")), help="Selections missing either free time or activity duration")
+    c4.metric("Valid Selections Analyzed", valid_selections, help="Total unique selections excluding missing data")
+
+    categories = dm.get("categories", {})
+    if categories:
+        st.subheader("Match/Overflow Rates by Category")
+
+        # Prepare DataFrame for stacked bar chart using standard loops and blocks
+        chart_data = {}
+        for cat, stats in categories.items():
+            if stats["validSelections"] > 0:
+                chart_data[cat] = {
+                    "Fits within free time": stats["matchRate"] * 100,
+                    "Exceeds free time": stats["overflowRate"] * 100
+                }
+
+        if chart_data:
+            df_chart = pd.DataFrame(chart_data).T
+            st.bar_chart(df_chart, y_label="Percentage (%)", height=300)
+
+        # Prepare table data for category breakdown
+        table_rows = []
+        for cat, stats in categories.items():
+            cat_valid = stats.get("validSelections", 0)
+
+            # Format category rates using standard blocks
+            if cat_valid == 0:
+                cat_match_str = "—"
+                cat_overflow_str = "—"
+            else:
+                cat_match_str = pct(stats["matchRate"])
+                cat_overflow_str = pct(stats["overflowRate"])
+
+            table_rows.append({
+                "Category": cat,
+                "Matches": stats["matches"],
+                "Overflows": stats["overflows"],
+                "Missing Data": stats["missingValues"],
+                "Match Rate": cat_match_str,
+                "Overflow Rate": cat_overflow_str,
+            })
+
+        st.dataframe(pd.DataFrame(table_rows), hide_index=True, use_container_width=True)
+
+# ------------------------------------------------------------------ BQ8
+st.header("8 · Feature adoption among active users")
+
+ad = data.get("featureAdoption", {})
+screens = ad.get("screens", [])
+
+if not screens:
+    st.info("No screen usage data yet.")
+else:
+    st.metric("Active users (last 7 days)", ad.get("activeUsers", 0))
+
+    # Exclude undefined adoption rates from the chart.
+    chart_screens = [
+        s for s in screens
+        if s["adoptionRate"] is not None
+    ]
+
+    if chart_screens:
+        chart_df = pd.DataFrame([
+            {
+                "Screen": s["screen"],
+                "Usage (%)": s["adoptionRate"] * 100,
+            }
+            for s in chart_screens
+        ]).set_index("Screen")
+
+        st.bar_chart(
+            chart_df,
+            y_label="% of active users",
+        )
+        st.caption("Underutilization threshold: below 40%.")
+    else:
+        st.info("No active users in the selected window.")
+
+    # Highlight underutilized screens.
+    underutilized = [
+        s for s in screens if s["underutilized"]
+    ]
+
+    if underutilized:
+        names = ", ".join(s["screen"] for s in underutilized)
+        st.warning(f"Below 40% adoption: {names}")
+
+    # Keep a status table alongside the chart.
+    table = pd.DataFrame([
+        {
+            "Screen": s["screen"],
+            "Unique users": s["uniqueUsers"],
+            "Adoption": (
+                pct(s["adoptionRate"])
+                if s["adoptionRate"] is not None
+                else "No data"
+            ),
+            "Status": (
+                "Underutilized"
+                if s["underutilized"]
+                else "No data"
+                if s["adoptionRate"] is None
+                else "OK"
+            ),
+        }
+        for s in screens
+    ])
+
+    st.dataframe(
+        table,
+        hide_index=True,
+        use_container_width=True,
+    )
+    )
+
+# ------------------------------------------------------------------ BQ9
+st.header("9 · Category and Activity Demand by Time Slot (Commercial Partnerships)")
+cd = data.get("categoryDemand", {})
+slots = cd.get("timeSlots", [])
+if not cd.get("totalSelectionsOverall"):
+    st.info("No activity selections recorded yet.")
+else:
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Selections", cd.get("totalSelectionsOverall", 0))
+    c2.metric("Top Category Overall", cd.get("topCategoryOverall") or "—")
+    c3.metric("Peak Time Slot", cd.get("peakTimeSlot") or "—")
+
+    matrix_data = {}
+    for s in slots:
+        label = s["label"].split(" (")[0]
+        matrix_data[label] = {c["category"]: c["count"] for c in s.get("categories", [])}
+    if matrix_data:
+        st.subheader("Selections by Time Slot and Category")
+        st.bar_chart(pd.DataFrame(matrix_data).T, y_label="selections")
+
+    st.subheader("Commercial Partnership Opportunities")
+    table_rows = []
+    for s in slots:
+        top_acts = ", ".join(f"{a['title']} ({a['count']})" for a in s.get("topActivities", [])) or "—"
+        table_rows.append({
+            "Franja Horaria": s["label"],
+            "Selecciones": s["totalSelections"],
+            "Categoría Líder": (s["topCategory"] or "—") + (" (Empate)" if s.get("tie") else ""),
+            "Actividades Principales": top_acts,
+            "Oportunidad de Alianza / Monetización": s.get("monetizationOpportunity", "—"),
+        })
+    st.dataframe(pd.DataFrame(table_rows), hide_index=True, use_container_width=True)
+
+    # ------------------------------------------------------------------ BQ10
 st.header("10 · Network quality impact on loading and selection")
 
 ni = data.get("networkImpact", {})
@@ -235,10 +419,4 @@ else:
             if pd.isna(value)
             else f"{value * 100:.1f}%"
         )
-    )
-
-    st.dataframe(
-        table,
-        hide_index=True,
-        use_container_width=True,
     )
