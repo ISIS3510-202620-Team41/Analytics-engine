@@ -152,6 +152,6 @@ def network_impact(conn, f: Filters) -> dict:
         })
 
     return {
-        "loadingScreen": "Recommendations",
+        "loadingScreen": "recommendations",
         "byNetworkQuality": by_quality,
     }
