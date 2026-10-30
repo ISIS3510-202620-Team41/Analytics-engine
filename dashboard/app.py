@@ -296,7 +296,6 @@ else:
         hide_index=True,
         use_container_width=True,
     )
-    )
 
 # ------------------------------------------------------------------ BQ9
 st.header("9 · Category and Activity Demand by Time Slot (Commercial Partnerships)")
