@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS events (
     free_time_minutes  INTEGER,
     recommendation_id  TEXT,
     action             TEXT,
+    network_quality    TEXT
     title              TEXT,
     price              TEXT,
     activity_duration_minutes  INTEGER
@@ -37,8 +38,8 @@ CREATE INDEX IF NOT EXISTS idx_events_user_time ON events (user_id, occurred_at)
 
 COLUMNS = (
     "event_id", "event_type", "user_id", "session_id", "app_version", "occurred_at", "received_at",
-    "screen", "feature", "component", "exception_type", "load_type", "duration_ms", "activity_id", "category",
-    "free_time_minutes", "recommendation_id", "action", "title", "price", "activity_duration_minutes"
+    "screen", "component", "exception_type", "load_type", "duration_ms", "activity_id", "category",
+    "free_time_minutes", "recommendation_id", "action", "network_quality", "title", "price", "activity_duration_minutes"
 )
 
 _initialized: set[str] = set()
@@ -55,6 +56,11 @@ def connect():
         if key not in _initialized:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript(SCHEMA)
+            columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(events)")}
+            if "network_quality" not in columns:
+                conn.execute( "ALTER TABLE events ADD COLUMN network_quality TEXT" )
             # Asegura compatibilidad si la base ya existia con menos columnas
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(events)")
