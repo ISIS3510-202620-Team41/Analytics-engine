@@ -119,7 +119,7 @@ class RecommendedActivitySelectedEvent(_BaseEvent):
 
 class FriendAvailabilityUsedEvent(_BaseEvent):
     eventType: Literal["friend_availability_used"]
-    action: Literal["viewed", "plan_created", "plan_joined"] = "viewed"
+    action: Literal["viewed", "plan_created", "plan_joined", "matrix_viewed", "create_plan"] = "viewed"
     activityId: str | None = Field(default=None, max_length=100)
 
 

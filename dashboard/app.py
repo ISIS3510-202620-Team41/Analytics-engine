@@ -496,3 +496,72 @@ else:
         hide_index=True,
         use_container_width=True,
     )
+
+# ------------------------------------------------------------------ BQ13
+st.header("13 · Friend Availability Impact on Group Plan Creation (BQ-13)")
+st.caption(
+    "Type 3 Business Question: Evaluates how consulting friend schedule availability "
+    "impacts the rate and volume of group plan creation compared to the direct browsing flow."
+)
+fai = data.get("friendAvailabilityImpact", {})
+
+if not fai.get("activeUsers"):
+    st.info("No user activity recorded in this period to evaluate friend availability impact.")
+else:
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(
+        "Availability Conversion",
+        pct(fai.get("availabilityConversionRate")),
+        help="Proportion of users consulting friend availability who created or joined a plan",
+    )
+    c2.metric(
+        "Direct Flow Conversion",
+        pct(fai.get("directConversionRate")),
+        help="Proportion of users in direct flow who selected an activity without checking friends",
+    )
+    c3.metric(
+        "Lift Factor",
+        f"{fai.get('liftFactor', 1.0):.2f}x",
+        help="Relative multiplier in plan creation likelihood when using friend availability",
+    )
+    c4.metric(
+        "Plans with Availability",
+        fai.get("plansWithAvailability", 0),
+        help="Total plans created or joined directly from the friend availability feature",
+    )
+
+    # Comparative bar chart
+    comparison_df = pd.DataFrame(
+        [
+            {"Flow": "Friend Availability", "Conversion Rate": fai.get("availabilityConversionRate", 0.0)},
+            {"Flow": "Direct Browsing", "Conversion Rate": fai.get("directConversionRate", 0.0)},
+        ]
+    )
+    st.bar_chart(
+        comparison_df.set_index("Flow")["Conversion Rate"],
+        y_label="Conversion Rate (0 to 1)",
+    )
+
+    # Summary table
+    comp_table = pd.DataFrame(
+        [
+            {
+                "Segment": "With Friend Availability",
+                "Users in Segment": fai.get("usersConsultingAvailability", 0),
+                "Users Converting to Plan": fai.get("usersCreatingPlansWithAvailability", 0),
+                "Plans Created/Joined": fai.get("plansWithAvailability", 0),
+                "Conversion Rate": pct(fai.get("availabilityConversionRate")),
+            },
+            {
+                "Segment": "Direct Browsing (Without Availability)",
+                "Users in Segment": fai.get("usersWithoutAvailability", 0),
+                "Users Converting to Plan": fai.get("usersCreatingPlansWithoutAvailability", 0),
+                "Plans Created/Joined": fai.get("plansWithoutAvailability", 0),
+                "Conversion Rate": pct(fai.get("directConversionRate")),
+            },
+        ]
+    )
+    st.dataframe(comp_table, hide_index=True, use_container_width=True)
+
+    if fai.get("conclusion"):
+        st.info(fai.get("conclusion"))

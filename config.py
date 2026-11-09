@@ -9,7 +9,7 @@ from pathlib import Path
 # Si el backend agrega una categoria, hay que agregarla aqui y en models.Category.
 CATEGORIES = ("DEPORTES", "ESTUDIO", "CULTURA", "ENTRETENIMIENTO")
 
-FRIEND_PLAN_ACTIONS = ("plan_created", "plan_joined")
+FRIEND_PLAN_ACTIONS = ("plan_created", "plan_joined", "create_plan")
 
 # Catálogo inicial de pantallas para BQ8.
 # Debe mantenerse sincronizado con los nombres enviados por Flutter/Kotlin.
