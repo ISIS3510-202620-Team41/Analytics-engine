@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS events (
     free_time_minutes  INTEGER,
     recommendation_id  TEXT,
     action             TEXT,
-    network_quality    TEXT
+    network_quality    TEXT,
     title              TEXT,
     price              TEXT,
     activity_duration_minutes  INTEGER
@@ -39,7 +39,8 @@ CREATE INDEX IF NOT EXISTS idx_events_user_time ON events (user_id, occurred_at)
 COLUMNS = (
     "event_id", "event_type", "user_id", "session_id", "app_version", "occurred_at", "received_at",
     "screen", "component", "exception_type", "load_type", "duration_ms", "activity_id", "category",
-    "free_time_minutes", "recommendation_id", "action", "network_quality", "title", "price", "activity_duration_minutes"
+    "free_time_minutes", "recommendation_id", "action", "network_quality", "title", "price", "activity_duration_minutes",
+    "feature"
 )
 
 _initialized: set[str] = set()
