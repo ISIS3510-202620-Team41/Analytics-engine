@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Annotated, Literal, Union
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, Field, field_validator, model_validator
 
 from filters import to_db_time, to_utc
 
@@ -123,6 +123,28 @@ class FriendAvailabilityUsedEvent(_BaseEvent):
     activityId: str | None = Field(default=None, max_length=100)
 
 
+class ActivityEnrollmentConfirmedEvent(_BaseEvent):
+    """Registra una inscripcion confirmada por el backend."""
+
+    eventType: Literal["activity_enrollment_confirmed"]
+    activityId: str = Field(min_length=1, max_length=100)
+    # La hora programada debe incluir la zona horaria o el desplazamiento UTC.
+    scheduledStartTime: AwareDatetime
+    # Identifica la misma inscripcion en la confirmacion y la cancelacion.
+    enrollmentId: UUID
+
+
+class ActivityEnrollmentCanceledEvent(_BaseEvent):
+    """Registra la cancelacion confirmada de una inscripcion."""
+
+    eventType: Literal["activity_enrollment_canceled"]
+    activityId: str = Field(min_length=1, max_length=100)
+    # La hora programada permite calcular la antelacion de la cancelacion.
+    scheduledStartTime: AwareDatetime
+    # Identifica la misma inscripcion en la confirmacion y la cancelacion.
+    enrollmentId: UUID
+
+
 AnalyticsEvent = Annotated[
     Union[
         AppLoadingTimeEvent,
@@ -132,6 +154,9 @@ AnalyticsEvent = Annotated[
         RecommendationShownEvent,
         RecommendedActivitySelectedEvent,
         FriendAvailabilityUsedEvent,
+        # Inscripciones y cancelaciones confirmadas para BQ12.
+        ActivityEnrollmentConfirmedEvent,
+        ActivityEnrollmentCanceledEvent,
     ],
     Field(discriminator="eventType"),
 ]
@@ -154,6 +179,10 @@ def to_row(event, received_at: datetime) -> dict:
         claimed = to_utc(event.timestamp)
         occurred_at = claimed if claimed <= received_at + MAX_CLOCK_SKEW else received_at
 
+    # Los eventos anteriores no tienen una hora de inicio programada.
+    scheduled_start = getattr(event, "scheduledStartTime", None)
+    enrollment_id = getattr(event, "enrollmentId", None)
+
     category = getattr(event, "category", None)
     if isinstance(category, Enum):
         category = category.value
@@ -166,6 +195,7 @@ def to_row(event, received_at: datetime) -> dict:
         "app_version": event.appVersion,
         "occurred_at": to_db_time(occurred_at),
         "received_at": to_db_time(received_at),
+        "scheduled_start_time": to_db_time(scheduled_start) if scheduled_start is not None else None,
         "screen": getattr(event, "screen", None),
         "feature": getattr(event, "feature", None),
         "component": getattr(event, "component", None),
@@ -173,6 +203,7 @@ def to_row(event, received_at: datetime) -> dict:
         "load_type": getattr(event, "loadType", None),
         "duration_ms": getattr(event, "durationMs", None),
         "activity_id": getattr(event, "activityId", None),
+        "enrollment_id": str(enrollment_id) if enrollment_id is not None else None,
         "category": category,
         "free_time_minutes": getattr(event, "freeTimeMinutes", None),
         "recommendation_id": getattr(event, "recommendationId", None),
