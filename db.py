@@ -30,7 +30,9 @@ CREATE TABLE IF NOT EXISTS events (
     network_quality    TEXT,
     title              TEXT,
     price              TEXT,
-    activity_duration_minutes  INTEGER
+    activity_duration_minutes  INTEGER,
+    enrollment_id      TEXT,
+    scheduled_start_time TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_type_time ON events (event_type, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_events_user_time ON events (user_id, occurred_at);
@@ -40,7 +42,7 @@ COLUMNS = (
     "event_id", "event_type", "user_id", "session_id", "app_version", "occurred_at", "received_at",
     "screen", "component", "exception_type", "load_type", "duration_ms", "activity_id", "category",
     "free_time_minutes", "recommendation_id", "action", "network_quality", "title", "price", "activity_duration_minutes",
-    "feature"
+    "feature", "feature","enrollment_id", "scheduled_start_time",
 )
 
 _initialized: set[str] = set()
@@ -57,6 +59,8 @@ def connect():
         if key not in _initialized:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript(SCHEMA)
+            # Serializa la migracion si dos peticiones abren la base al mismo tiempo.
+            conn.execute("BEGIN IMMEDIATE")
             columns = {
                 row["name"]
                 for row in conn.execute("PRAGMA table_info(events)")}
@@ -74,6 +78,12 @@ def connect():
                 conn.execute("ALTER TABLE events ADD COLUMN activity_duration_minutes INTEGER")
             if "feature" not in existing:
                 conn.execute("ALTER TABLE events ADD COLUMN feature TEXT")
+            # Los eventos guardados antes de BQ12 conservan valores NULL.
+            if "enrollment_id" not in existing:
+                conn.execute("ALTER TABLE events ADD COLUMN enrollment_id TEXT")
+            if "scheduled_start_time" not in existing:
+                conn.execute("ALTER TABLE events ADD COLUMN scheduled_start_time TEXT")
+            conn.commit()
             _initialized.add(key)
         yield conn
         conn.commit()
@@ -88,7 +98,10 @@ def insert_rows(conn, rows: list[dict]) -> tuple[int, int]:
     """Inserta ignorando los event_id repetidos (reintentos de la app). Devuelve (aceptados, duplicados)."""
     sql = (f"INSERT OR IGNORE INTO events ({','.join(COLUMNS)}) "
            f"VALUES ({','.join(':' + c for c in COLUMNS)})")
-    accepted = sum(conn.execute(sql, row).rowcount for row in rows)
+    accepted = sum(
+        conn.execute(sql, {"enrollment_id": None, "scheduled_start_time": None, **row}).rowcount
+        for row in rows
+    )
     return accepted, len(rows) - accepted
 
 
