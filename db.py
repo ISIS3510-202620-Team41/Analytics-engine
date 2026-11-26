@@ -32,17 +32,55 @@ CREATE TABLE IF NOT EXISTS events (
     price              TEXT,
     activity_duration_minutes  INTEGER,
     enrollment_id      TEXT,
-    scheduled_start_time TEXT
+    scheduled_start_time TEXT,
+    attempt_id TEXT,
+    preferences TEXT,
+    location_name TEXT,
+    latitude REAL,
+    longitude REAL,
+    available_friends_count INTEGER,
+    selected_available_friends_count INTEGER,
+    creation_status TEXT,
+    plan_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_type_time ON events (event_type, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_events_user_time ON events (user_id, occurred_at);
 """
 
 COLUMNS = (
-    "event_id", "event_type", "user_id", "session_id", "app_version", "occurred_at", "received_at",
-    "screen", "component", "exception_type", "load_type", "duration_ms", "activity_id", "category",
-    "free_time_minutes", "recommendation_id", "action", "network_quality", "title", "price", "activity_duration_minutes",
-    "feature", "feature","enrollment_id", "scheduled_start_time",
+    "event_id",
+    "event_type",
+    "user_id",
+    "session_id",
+    "app_version",
+    "occurred_at",
+    "received_at",
+    "screen",
+    "feature",
+    "component",
+    "exception_type",
+    "load_type",
+    "duration_ms",
+    "activity_id",
+    "category",
+    "free_time_minutes",
+    "recommendation_id",
+    "action",
+    "network_quality",
+    "title",
+    "price",
+    "activity_duration_minutes",
+    "enrollment_id",
+    "scheduled_start_time",
+    "attempt_id",
+    "preferences",
+    "location_name",
+    "latitude",
+    "longitude",
+    "available_friends_count",
+    "selected_available_friends_count",
+    "creation_status",
+    "plan_id",
 )
 
 _initialized: set[str] = set()
@@ -83,6 +121,31 @@ def connect():
                 conn.execute("ALTER TABLE events ADD COLUMN enrollment_id TEXT")
             if "scheduled_start_time" not in existing:
                 conn.execute("ALTER TABLE events ADD COLUMN scheduled_start_time TEXT")
+            
+            bq14_columns = {
+                "attempt_id": "TEXT",
+                "preferences": "TEXT",
+                "location_name": "TEXT",
+                "latitude": "REAL",
+                "longitude": "REAL",
+                "available_friends_count": "INTEGER",
+                "selected_available_friends_count": "INTEGER",
+                "creation_status": "TEXT",
+                "plan_id": "TEXT",
+                }
+
+            for column_name, column_type in bq14_columns.items():
+                if column_name not in existing:
+                    conn.execute(
+                        f"ALTER TABLE events ADD COLUMN "
+                        f"{column_name} {column_type}"
+                    )
+
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_events_attempt_id "
+                "ON events (attempt_id)"
+            )
+
             conn.commit()
             _initialized.add(key)
         yield conn
@@ -94,16 +157,24 @@ def connect():
         conn.close()
 
 
+
 def insert_rows(conn, rows: list[dict]) -> tuple[int, int]:
-    """Inserta ignorando los event_id repetidos (reintentos de la app). Devuelve (aceptados, duplicados)."""
-    sql = (f"INSERT OR IGNORE INTO events ({','.join(COLUMNS)}) "
-           f"VALUES ({','.join(':' + c for c in COLUMNS)})")
+    """Inserta ignorando event_id repetidos."""
+    sql = (
+        f"INSERT OR IGNORE INTO events ({','.join(COLUMNS)}) "
+        f"VALUES ({','.join(':' + c for c in COLUMNS)})"
+    )
+
+    defaults = {
+        column: None
+        for column in COLUMNS
+    }
+
     accepted = sum(
-        conn.execute(sql, {"enrollment_id": None, "scheduled_start_time": None, **row}).rowcount
+        conn.execute(sql, {**defaults, **row}).rowcount
         for row in rows
     )
     return accepted, len(rows) - accepted
-
 
 def clear_all(conn) -> int:
     return conn.execute("DELETE FROM events").rowcount
