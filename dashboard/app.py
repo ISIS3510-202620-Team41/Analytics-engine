@@ -554,21 +554,10 @@ else:
 
 st.header("BQ-14 — Plan Creation Success")
 
-st.markdown(
-    """
-    Analiza qué combinaciones de preferencias, tiempo libre,
-    ubicación y disponibilidad de amigos producen una mayor
-    tasa de éxito al crear un plan.
-    """
-)
-
-# Usa aquí la misma URL base que utiliza el resto del dashboard.
-plan_creation_url = (
-    f"{API_BASE_URL.rstrip('/')}/metrics/plan-creation-success"
-)
+plan_creation_url = f"{url}/metrics/plan-creation-success"
 
 try:
-    response = requests.get(plan_creation_url, timeout=10)
+    response = requests.get(plan_creation_url, headers=headers, timeout=10)
     response.raise_for_status()
     plan_data = response.json()
 
