@@ -302,64 +302,73 @@ else:
 st.header("8 · Feature adoption among active users")
 
 ad = data.get("featureAdoption", {})
-screens = ad.get("screens", [])
+features = ad.get("features", [])
 
-if not screens:
-    st.info("No screen usage data yet.")
+st.metric("Active users (last 7 days)", ad.get("activeUsers", 0))
+
+if not features:
+    st.info("No feature usage data yet.")
 else:
-    st.metric("Active users (last 7 days)", ad.get("activeUsers", 0))
-
     # Exclude undefined adoption rates from the chart.
-    chart_screens = [
-        s for s in screens
-        if s["adoptionRate"] is not None
+    chart_features = [
+        feature for feature in features
+        if feature["adoptionRate"] is not None
     ]
 
-    if chart_screens:
+    if chart_features:
         chart_df = pd.DataFrame([
             {
-                "Screen": s["screen"],
-                "Usage (%)": s["adoptionRate"] * 100,
+                "Feature": feature["feature"],
+                "Adoption (%)": feature["adoptionRate"] * 100,
             }
-            for s in chart_screens
-        ]).set_index("Screen")
+            for feature in chart_features
+        ]).set_index("Feature")
 
         st.bar_chart(
             chart_df,
             y_label="% of active users",
         )
+
         st.caption("Underutilization threshold: below 40%.")
     else:
         st.info("No active users in the selected window.")
 
-    # Highlight underutilized screens.
+    # Highlight underutilized features.
     underutilized = [
-        s for s in screens if s["underutilized"]
+        feature for feature in features
+        if feature["underutilized"]
     ]
 
     if underutilized:
-        names = ", ".join(s["screen"] for s in underutilized)
+        names = ", ".join(
+            feature["feature"] for feature in underutilized
+        )
         st.warning(f"Below 40% adoption: {names}")
 
-    # Keep a status table alongside the chart.
+    # Feature details, including their associated screens.
     table = pd.DataFrame([
         {
-            "Screen": s["screen"],
-            "Unique users": s["uniqueUsers"],
+            "Feature": feature["feature"],
+            "Screen": (
+                ", ".join(feature["screens"])
+                if feature["screens"]
+                else "Not recorded"
+            ),
+            "Unique users": feature["uniqueUsers"],
             "Adoption": (
-                pct(s["adoptionRate"])
-                if s["adoptionRate"] is not None
+                pct(feature["adoptionRate"])
+                if feature["adoptionRate"] is not None
                 else "No data"
             ),
             "Status": (
                 "Underutilized"
-                if s["underutilized"]
+                if feature["underutilized"]
                 else "No data"
-                if s["adoptionRate"] is None
+                if feature["adoptionRate"] is None
                 else "OK"
             ),
         }
-        for s in screens
+        for feature in features
     ])
 
     st.dataframe(
@@ -367,7 +376,6 @@ else:
         hide_index=True,
         use_container_width=True,
     )
-    
 
 # ------------------------------------------------------------------ BQ9
 st.header("9 · Category and Activity Demand by Time Slot (Commercial Partnerships)")
