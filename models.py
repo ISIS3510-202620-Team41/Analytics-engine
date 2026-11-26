@@ -145,6 +145,78 @@ class ActivityEnrollmentCanceledEvent(_BaseEvent):
     enrollmentId: UUID
 
 
+class PlanCreationAttemptedEvent(_BaseEvent):
+    """Contexto disponible cuando el usuario intenta crear un plan."""
+
+    eventType: Literal["plan_creation_attempted"]
+    attemptId: UUID
+
+    # Snapshot de las preferencias seleccionadas para este intento.
+    preferences: list[str] = Field(default_factory=list, max_length=20)
+
+    freeTimeMinutes: int = Field(ge=0)
+
+    locationName: str = Field(min_length=1, max_length=200)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+
+    availableFriendsCount: int = Field(ge=0)
+    selectedAvailableFriendsCount: int = Field(ge=0)
+
+    @field_validator("preferences", mode="before")
+    @classmethod
+    def _normalize_preferences(cls, value):
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("preferences debe ser una lista")
+        return [
+            item.strip().upper()
+            for item in value
+            if isinstance(item, str) and item.strip()
+        ]
+
+    @field_validator("locationName", mode="before")
+    @classmethod
+    def _normalize_location_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def _validate_friend_counts(self):
+        if self.selectedAvailableFriendsCount > self.availableFriendsCount:
+            raise ValueError(
+                "selectedAvailableFriendsCount no puede superar "
+                "availableFriendsCount"
+            )
+
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError(
+                "latitude y longitude deben enviarse juntas"
+            )
+
+        return self
+
+
+class PlanCreationResultEvent(_BaseEvent):
+    """Resultado definitivo de un intento de creacion."""
+
+    eventType: Literal["plan_creation_result"]
+    attemptId: UUID
+
+    status: Literal["success", "failure"]
+    planId: str | None = Field(default=None, min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def _validate_plan_id(self):
+        if self.status == "success" and not self.planId:
+            raise ValueError("planId es obligatorio cuando status = 'success'")
+
+        if self.status == "failure" and self.planId is not None:
+            raise ValueError("planId debe ser null cuando status = 'failure'")
+
+        return self
+
+
 AnalyticsEvent = Annotated[
     Union[
         AppLoadingTimeEvent,
@@ -157,6 +229,8 @@ AnalyticsEvent = Annotated[
         # Inscripciones y cancelaciones confirmadas para BQ12.
         ActivityEnrollmentConfirmedEvent,
         ActivityEnrollmentCanceledEvent,
+        PlanCreationAttemptedEvent,
+        PlanCreationResultEvent,
     ],
     Field(discriminator="eventType"),
 ]
@@ -187,6 +261,13 @@ def to_row(event, received_at: datetime) -> dict:
     if isinstance(category, Enum):
         category = category.value
 
+    attempt_id = getattr(event, "attemptId", None)
+    preferences = getattr(event, "preferences", None)
+
+    if preferences is not None:
+        import json
+        preferences = json.dumps(preferences, ensure_ascii=False)
+
     return {
         "event_id": str(event.eventId or uuid4()),
         "event_type": event.eventType,
@@ -212,4 +293,13 @@ def to_row(event, received_at: datetime) -> dict:
         "title": getattr(event, "title", None),
         "price": getattr(event, "price", None),
         "activity_duration_minutes": getattr(event, "activityDurationMinutes", None),
+        "attempt_id": str(attempt_id) if attempt_id is not None else None,
+        "preferences": preferences,
+        "location_name": getattr(event, "locationName", None),
+        "latitude": getattr(event, "latitude", None),
+        "longitude": getattr(event, "longitude", None),
+        "available_friends_count": getattr(event, "availableFriendsCount", None),
+        "selected_available_friends_count": getattr(event, "selectedAvailableFriendsCount", None),
+        "creation_status": getattr(event, "status", None),
+        "plan_id": getattr(event, "planId", None),
     }

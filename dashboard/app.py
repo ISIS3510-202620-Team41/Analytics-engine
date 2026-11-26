@@ -547,3 +547,164 @@ if any(lead_time_counts.values()):
     st.bar_chart(chart, y_label="Cancellations")
 else:
     st.info("No advance lead time measurements yet.")
+
+# ============================================================
+# BQ14: Plan Creation Success
+# ============================================================
+
+st.header("BQ-14 — Plan Creation Success")
+
+st.markdown(
+    """
+    Analiza qué combinaciones de preferencias, tiempo libre,
+    ubicación y disponibilidad de amigos producen una mayor
+    tasa de éxito al crear un plan.
+    """
+)
+
+# Usa aquí la misma URL base que utiliza el resto del dashboard.
+plan_creation_url = (
+    f"{API_BASE_URL.rstrip('/')}/metrics/plan-creation-success"
+)
+
+try:
+    response = requests.get(plan_creation_url, timeout=10)
+    response.raise_for_status()
+    plan_data = response.json()
+
+    total_attempts = plan_data["totalResolvedAttempts"]
+    minimum_sample = plan_data["minimumSampleSize"]
+    combinations = plan_data["combinations"]
+    winner = plan_data["winner"]
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "Resolved attempts",
+        total_attempts,
+    )
+
+    col2.metric(
+        "Minimum sample size",
+        minimum_sample,
+    )
+
+    if winner is not None:
+        col3.metric(
+            "Highest success rate",
+            f"{winner['successRate']:.2f}%",
+        )
+    else:
+        col3.metric(
+            "Highest success rate",
+            "Not enough data",
+        )
+
+    st.caption(
+        "Location grouping precision: "
+        f"{plan_data['locationPrecisionDecimals']} decimal places."
+    )
+
+    if winner is not None:
+        st.subheader("Best-performing combination")
+
+        st.write(
+            f"**Preferences:** "
+            f"{', '.join(winner['preferences']) or 'None'}"
+        )
+        st.write(f"**Free time:** {winner['freeTimeBucket']}")
+        st.write(f"**Location:** {winner['location']}")
+        st.write(
+            f"**Available friends:** "
+            f"{winner['availableFriendsCount']}"
+        )
+        st.write(
+            f"**Selected available friends:** "
+            f"{winner['selectedAvailableFriendsCount']}"
+        )
+        st.write(
+            f"**Attempts:** {winner['attempts']} "
+            f"({winner['successes']} successes, "
+            f"{winner['failures']} failures)"
+        )
+
+    else:
+        st.info(
+            "No combination has reached the minimum sample size yet. "
+            "More resolved attempts are needed before identifying "
+            "a best-performing combination."
+        )
+
+    st.subheader("Combination comparison")
+
+    if combinations:
+        table_data = []
+
+        for item in combinations:
+            table_data.append({
+                "Preferences": (
+                    ", ".join(item["preferences"]) or "None"
+                ),
+                "Free time": item["freeTimeBucket"],
+                "Location": item["location"],
+                "Available friends": item["availableFriendsCount"],
+                "Selected friends": (
+                    item["selectedAvailableFriendsCount"]
+                ),
+                "Attempts": item["attempts"],
+                "Successes": item["successes"],
+                "Failures": item["failures"],
+                "Success rate (%)": item["successRate"],
+                "Eligible": (
+                    "Yes" if item["eligible"] else "Insufficient sample"
+                ),
+            })
+
+        df = pd.DataFrame(table_data)
+
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.subheader("Success rate by combination")
+
+        chart_data = pd.DataFrame({
+            "Combination": [
+                (
+                    f"{', '.join(item['preferences']) or 'No preferences'}"
+                    f" | {item['freeTimeBucket']}"
+                    f" | {item['location']}"
+                    f" | {item['selectedAvailableFriendsCount']} "
+                    f"selected friends"
+                )
+                for item in combinations
+            ],
+            "Success rate (%)": [
+                item["successRate"]
+                for item in combinations
+            ],
+        })
+
+        chart_data = chart_data.set_index("Combination")
+
+        st.bar_chart(
+            chart_data,
+            y="Success rate (%)",
+        )
+
+        st.caption(
+            "Combinations below the minimum sample size are displayed "
+            "for reference, but are not considered eligible winners."
+        )
+
+    else:
+        st.info(
+            "There are no resolved plan creation attempts to display."
+        )
+
+except requests.RequestException as error:
+    st.error(
+        f"Could not load plan creation metrics: {error}"
+    )
