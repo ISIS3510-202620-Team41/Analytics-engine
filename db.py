@@ -36,6 +36,18 @@ CREATE TABLE IF NOT EXISTS events (
     jank_frames        INTEGER,
     total_frames       INTEGER,
     heap_memory_mb     REAL
+    activity_duration_minutes  INTEGER,
+    enrollment_id      TEXT,
+    scheduled_start_time TEXT,
+    attempt_id TEXT,
+    preferences TEXT,
+    location_name TEXT,
+    latitude REAL,
+    longitude REAL,
+    available_friends_count INTEGER,
+    selected_available_friends_count INTEGER,
+    creation_status TEXT,
+    plan_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_type_time ON events (event_type, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_events_user_time ON events (user_id, occurred_at);
@@ -51,6 +63,39 @@ COLUMNS = (
     "activity_duration_minutes",
     "benchmark_id", "optimization_stage",
     "jank_frames", "total_frames", "heap_memory_mb",
+    "event_id",
+    "event_type",
+    "user_id",
+    "session_id",
+    "app_version",
+    "occurred_at",
+    "received_at",
+    "screen",
+    "feature",
+    "component",
+    "exception_type",
+    "load_type",
+    "duration_ms",
+    "activity_id",
+    "category",
+    "free_time_minutes",
+    "recommendation_id",
+    "action",
+    "network_quality",
+    "title",
+    "price",
+    "activity_duration_minutes",
+    "enrollment_id",
+    "scheduled_start_time",
+    "attempt_id",
+    "preferences",
+    "location_name",
+    "latitude",
+    "longitude",
+    "available_friends_count",
+    "selected_available_friends_count",
+    "creation_status",
+    "plan_id",
 )
 
 _initialized: set[str] = set()
@@ -67,6 +112,8 @@ def connect():
         if key not in _initialized:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript(SCHEMA)
+            # Serializa la migracion si dos peticiones abren la base al mismo tiempo.
+            conn.execute("BEGIN IMMEDIATE")
             columns = {
                 row["name"]
                 for row in conn.execute("PRAGMA table_info(events)")}
@@ -93,11 +140,37 @@ def connect():
             }
 
             for column_name, column_type in bq15_columns.items():
+            # Los eventos guardados antes de BQ12 conservan valores NULL.
+            if "enrollment_id" not in existing:
+                conn.execute("ALTER TABLE events ADD COLUMN enrollment_id TEXT")
+            if "scheduled_start_time" not in existing:
+                conn.execute("ALTER TABLE events ADD COLUMN scheduled_start_time TEXT")
+            
+            bq14_columns = {
+                "attempt_id": "TEXT",
+                "preferences": "TEXT",
+                "location_name": "TEXT",
+                "latitude": "REAL",
+                "longitude": "REAL",
+                "available_friends_count": "INTEGER",
+                "selected_available_friends_count": "INTEGER",
+                "creation_status": "TEXT",
+                "plan_id": "TEXT",
+                }
+
+            for column_name, column_type in bq14_columns.items():
                 if column_name not in existing:
                     conn.execute(
                         f"ALTER TABLE events ADD COLUMN "
                         f"{column_name} {column_type}"
                     )
+
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_events_attempt_id "
+                "ON events (attempt_id)"
+            )
+
+            conn.commit()
             _initialized.add(key)
         yield conn
         conn.commit()
@@ -108,13 +181,24 @@ def connect():
         conn.close()
 
 
-def insert_rows(conn, rows: list[dict]) -> tuple[int, int]:
-    """Inserta ignorando los event_id repetidos (reintentos de la app). Devuelve (aceptados, duplicados)."""
-    sql = (f"INSERT OR IGNORE INTO events ({','.join(COLUMNS)}) "
-           f"VALUES ({','.join(':' + c for c in COLUMNS)})")
-    accepted = sum(conn.execute(sql, row).rowcount for row in rows)
-    return accepted, len(rows) - accepted
 
+def insert_rows(conn, rows: list[dict]) -> tuple[int, int]:
+    """Inserta ignorando event_id repetidos."""
+    sql = (
+        f"INSERT OR IGNORE INTO events ({','.join(COLUMNS)}) "
+        f"VALUES ({','.join(':' + c for c in COLUMNS)})"
+    )
+
+    defaults = {
+        column: None
+        for column in COLUMNS
+    }
+
+    accepted = sum(
+        conn.execute(sql, {**defaults, **row}).rowcount
+        for row in rows
+    )
+    return accepted, len(rows) - accepted
 
 def clear_all(conn) -> int:
     return conn.execute("DELETE FROM events").rowcount
