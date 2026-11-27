@@ -496,3 +496,130 @@ else:
         hide_index=True,
         use_container_width=True,
     )
+
+
+# ------------------------------------------------------------------ BQ15
+st.header("15 · Micro-optimization impact on performance")
+
+pb = data.get("performanceBenchmark", {})
+benchmarks = pb.get("benchmarks", [])
+
+if not benchmarks:
+    st.info("No performance benchmark measurements yet.")
+else:
+    comparable = [
+        b for b in benchmarks
+        if b.get("status") == "compared"
+    ]
+
+    if not comparable:
+        st.warning(
+            "Benchmarks were found, but baseline and optimized "
+            "measurements are needed for comparison."
+        )
+    else:
+        # Indicadores generales
+        avg_jank = pd.Series([
+            b["jankReductionPercent"]
+            for b in comparable
+            if b.get("jankReductionPercent") is not None
+        ])
+
+        avg_heap = pd.Series([
+            b["heapReductionPercent"]
+            for b in comparable
+            if b.get("heapReductionPercent") is not None
+        ])
+
+        c1, c2, c3 = st.columns(3)
+
+        c1.metric(
+            "Average jank reduction",
+            f"{avg_jank.mean():.2f}%"
+            if not avg_jank.empty else "No data"
+        )
+
+        c2.metric(
+            "Average heap memory reduction",
+            f"{avg_heap.mean():.2f}%"
+            if not avg_heap.empty else "No data"
+        )
+
+        c3.metric(
+            "Comparable benchmarks",
+            len(comparable)
+        )
+
+        # Comparación de jank frames
+        st.subheader("Slow frame rate: baseline vs optimized")
+
+        jank_data = pd.DataFrame([
+            {
+                "Benchmark": b["benchmarkId"],
+                "Baseline (%)": b["baselineJankRate"],
+                "Optimized (%)": b["optimizedJankRate"],
+            }
+            for b in comparable
+            if b.get("baselineJankRate") is not None
+            and b.get("optimizedJankRate") is not None
+        ])
+
+        if not jank_data.empty:
+            st.bar_chart(
+                jank_data.set_index("Benchmark"),
+                y_label="Slow frames (%)"
+            )
+        else:
+            st.info("No jank frame comparisons available.")
+
+        # Comparación de memoria
+        st.subheader("Heap memory: baseline vs optimized")
+
+        memory_data = pd.DataFrame([
+            {
+                "Benchmark": b["benchmarkId"],
+                "Baseline (MB)": b["baselineHeapMemoryMb"],
+                "Optimized (MB)": b["optimizedHeapMemoryMb"],
+            }
+            for b in comparable
+        ])
+
+        st.bar_chart(
+            memory_data.set_index("Benchmark"),
+            y_label="Heap memory (MB)"
+        )
+
+        # Tabla de resultados
+        st.subheader("Performance benchmark details")
+
+        table = pd.DataFrame([
+            {
+                "Benchmark": b["benchmarkId"],
+                "Baseline jank (%)": b["baselineJankRate"],
+                "Optimized jank (%)": b["optimizedJankRate"],
+                "Jank reduction (%)": b["jankReductionPercent"],
+                "Baseline heap (MB)": b["baselineHeapMemoryMb"],
+                "Optimized heap (MB)": b["optimizedHeapMemoryMb"],
+                "Memory reduction (%)": b["heapReductionPercent"],
+            }
+            for b in comparable
+        ])
+
+        st.dataframe(
+            table,
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    # Benchmarks que todavía no tienen ambos escenarios
+    incomplete = [
+        b for b in benchmarks
+        if b.get("status") == "insufficient_data"
+    ]
+
+    if incomplete:
+        st.caption(
+            f"{len(incomplete)} benchmark(s) need baseline "
+            "and optimized measurements."
+        )
+

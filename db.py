@@ -27,19 +27,30 @@ CREATE TABLE IF NOT EXISTS events (
     free_time_minutes  INTEGER,
     recommendation_id  TEXT,
     action             TEXT,
-    network_quality    TEXT
+    network_quality    TEXT,
     title              TEXT,
     price              TEXT,
-    activity_duration_minutes  INTEGER
+    activity_duration_minutes INTEGER,
+    benchmark_id       TEXT,
+    optimization_stage TEXT,
+    jank_frames        INTEGER,
+    total_frames       INTEGER,
+    heap_memory_mb     REAL
 );
 CREATE INDEX IF NOT EXISTS idx_events_type_time ON events (event_type, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_events_user_time ON events (user_id, occurred_at);
 """
 
 COLUMNS = (
-    "event_id", "event_type", "user_id", "session_id", "app_version", "occurred_at", "received_at",
-    "screen", "component", "exception_type", "load_type", "duration_ms", "activity_id", "category",
-    "free_time_minutes", "recommendation_id", "action", "network_quality", "title", "price", "activity_duration_minutes"
+    "event_id", "event_type", "user_id", "session_id",
+    "app_version", "occurred_at", "received_at",
+    "screen", "component", "exception_type", "load_type",
+    "duration_ms", "activity_id", "category",
+    "free_time_minutes", "recommendation_id", "action",
+    "network_quality", "title", "price",
+    "activity_duration_minutes",
+    "benchmark_id", "optimization_stage",
+    "jank_frames", "total_frames", "heap_memory_mb",
 )
 
 _initialized: set[str] = set()
@@ -73,6 +84,20 @@ def connect():
                 conn.execute("ALTER TABLE events ADD COLUMN activity_duration_minutes INTEGER")
             if "feature" not in existing:
                 conn.execute("ALTER TABLE events ADD COLUMN feature TEXT")
+            bq15_columns = {
+                "benchmark_id": "TEXT",
+                "optimization_stage": "TEXT",
+                "jank_frames": "INTEGER",
+                "total_frames": "INTEGER",
+                "heap_memory_mb": "REAL",
+            }
+
+            for column_name, column_type in bq15_columns.items():
+                if column_name not in existing:
+                    conn.execute(
+                        f"ALTER TABLE events ADD COLUMN "
+                        f"{column_name} {column_type}"
+                    )
             _initialized.add(key)
         yield conn
         conn.commit()
