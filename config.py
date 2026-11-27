@@ -6,7 +6,7 @@ from pathlib import Path
 # Espejo del enum Category del backend.
 CATEGORIES = ("DEPORTES", "ESTUDIO", "CULTURA", "ENTRETENIMIENTO")
 
-FRIEND_PLAN_ACTIONS = ("plan_created", "plan_joined")
+FRIEND_PLAN_ACTIONS = ("plan_created", "plan_joined", "create_plan")
 
 # Catalogo inicial de pantallas para BQ8.
 SCREEN_CATALOG = (
