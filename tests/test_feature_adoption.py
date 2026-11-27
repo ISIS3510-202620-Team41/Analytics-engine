@@ -69,6 +69,14 @@ class FeatureAdoptionTests(DbTestCase):
                 screen="FriendAvailability",
             ),  # Tampoco se duplica al contar usuarios de la feature.
             row(
+                "feature_used",
+                user=U1,
+                at=day(1),
+                feature="friend_availability",
+                action="check_availability",
+                screen="Home",
+            ),
+            row(
                 "friend_availability_used",
                 user=U2,
                 at=day(2),
@@ -111,6 +119,7 @@ class FeatureAdoptionTests(DbTestCase):
             friend_availability["adoptionRate"],
             1 / 3,
         )
+        self.assertEqual(friend_availability["screens"], ["FriendAvailability", "Home"],)
         self.assertTrue(friend_availability["underutilized"])
 
         # El catálogo permite identificar un elemento sin uso reciente.
@@ -232,6 +241,32 @@ class FeatureAdoptionApiTests(ApiTestCase):
         self.assertAlmostEqual(
             friend_availability["adoptionRate"],
             0.5,
+        )
+        self.assertEqual(
+            friend_availability["screens"],
+            ["FriendAvailability"],
+        )
+
+        # Verify that feature and screen were persisted in SQLite.
+        with connect() as conn:
+            stored_event = conn.execute(
+                """
+                SELECT feature, screen
+                FROM events
+                WHERE event_type = 'feature_used'
+                AND feature = ?
+                """,
+                ("friend_availability",),
+            ).fetchone()
+
+        self.assertIsNotNone(stored_event)
+        self.assertEqual(
+            stored_event["feature"],
+            "friend_availability",
+        )
+        self.assertEqual(
+            stored_event["screen"],
+            "FriendAvailability",
         )
         self.assertIn(
             "featureAdoption",

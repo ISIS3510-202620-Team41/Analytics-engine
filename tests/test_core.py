@@ -1,10 +1,12 @@
 """Ingesta, almacenamiento, seguridad y utilidades comunes."""
 import os
+import sqlite3
 import unittest
+from contextlib import closing
 from uuid import uuid4
 
 import config
-from db import clear_all, connect, insert_rows, purge_versions_before
+from db import SCHEMA, clear_all, connect, insert_rows, purge_versions_before
 from filters import version_key
 from tests.helpers import HAS_FASTAPI, ApiTestCase, DbTestCase, row
 
@@ -55,6 +57,46 @@ class IngestApiTests(ApiTestCase):
         body = {"eventType": "screen_view", "userId": USER, "screen": "Home", "eventId": str(uuid4())}
         self.assertEqual(self.client.post("/events", json=body).json(), {"accepted": 1, "duplicates": 0})
         self.assertEqual(self.client.post("/events", json=body).json(), {"accepted": 0, "duplicates": 1})
+
+    def test_enrollment_events_migrate_and_deduplicate_without_changing_legacy_events(self):
+        legacy_schema = SCHEMA.replace(
+            ",\n    enrollment_id      TEXT,\n    scheduled_start_time TEXT", ""
+        )
+        with closing(sqlite3.connect(config.db_path())) as conn, conn:
+            conn.executescript(legacy_schema)
+            conn.execute(
+                """INSERT INTO events (event_id, event_type, user_id, occurred_at, received_at)
+                   VALUES ('legacy', 'screen_view', ?, '2026-10-02', '2026-10-02')""",
+                (USER,),
+            )
+
+        enrollment_id, next_enrollment_id = str(uuid4()), str(uuid4())
+        enrollment = {
+            "userId": USER, "activityId": "a", "enrollmentId": enrollment_id,
+            "scheduledStartTime": "2026-10-02T10:00:00-05:00",
+        }
+        confirmed = dict(enrollment, eventType="activity_enrollment_confirmed", eventId=str(uuid4()))
+        canceled = dict(enrollment, eventType="activity_enrollment_canceled", eventId=str(uuid4()))
+        rejoined = dict(confirmed, enrollmentId=next_enrollment_id, eventId=str(uuid4()))
+        legacy = {"eventType": "screen_view", "userId": USER, "screen": "Home"}
+        response = self.client.post(
+            "/events/batch", json={"events": [confirmed, canceled, confirmed, rejoined, legacy]}
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json(), {"accepted": 4, "duplicates": 1})
+
+        with connect() as conn:
+            stored = {r["event_id"]: r for r in conn.execute("SELECT * FROM events")}
+        self.assertEqual(len(stored), 5)
+        for event in (confirmed, canceled, rejoined):
+            row = stored[event["eventId"]]
+            self.assertEqual(row["enrollment_id"], event["enrollmentId"])
+            self.assertEqual(row["scheduled_start_time"], "2026-10-02T15:00:00.000000Z")
+            self.assertEqual(row["occurred_at"], row["received_at"])
+        for row in stored.values():
+            if row["event_type"] == "screen_view":
+                self.assertIsNone(row["enrollment_id"])
+                self.assertIsNone(row["scheduled_start_time"])
 
     def test_invalid_events_are_rejected(self):
         bad = [

@@ -131,22 +131,36 @@ def feature_adoption(conn, f:Filters, window_days: int = DEFAULT_WINDOW_DAYS, no
 
     feature_rows = conn.execute(
         f"""
-        SELECT DISTINCT feature
+        SELECT DISTINCT feature, screen
         FROM events
         WHERE {where_features}
-        AND feature IS NOT NULL
-        AND TRIM(feature) <> ''
+            AND feature IS NOT NULL
+            AND TRIM(feature) <> ''
         """,
         params_features,
-    )
+    ).fetchall()
 
     historically_known_features = {row["feature"] for row in feature_rows}
+
+    #Recuperar las pantallas historicamente asociadas a cada feature
+    feature_screens = {}
+
+    for row in feature_rows:
+        screen = row["screen"]
+        if screen is not None and screen.strip():
+            feature_screens.setdefault(row["feature"], set()).add(screen)
 
     screen_users = _users_by_value(conn,window,"screen_view","screen",)
     feature_users = _users_by_value(conn,window,"feature_used","feature",)
 
     screens = _adoption_entries(config.SCREEN_CATALOG,historically_known_screens,screen_users,active_users,"screen",)
     features = _adoption_entries(config.FEATURE_CATALOG,historically_known_features,feature_users,active_users,"feature",)
+
+    # Incorporar las pantallas asociadas a cada feature.
+    for item in features:
+        item["screens"] = sorted(
+            feature_screens.get(item["feature"], set())
+        )
 
     underutilized_screen_count = sum(item["underutilized"] for item in screens)
     underutilized_feature_count = sum(item["underutilized"] for item in features)
