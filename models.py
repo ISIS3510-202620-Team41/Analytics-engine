@@ -53,6 +53,26 @@ class AppLoadingTimeEvent(_BaseEvent):
             raise ValueError("screen es obligatorio cuando loadType = 'screen'")
         return self
 
+class PerformanceBenchmarkEvent(_BaseEvent):
+    """Registra el rendimiento antes y después de una micro-optimización."""
+
+    eventType: Literal["performance_benchmark"]
+
+    benchmarkId: str = Field(min_length=1, max_length=100)
+
+    optimizationStage: Literal["baseline", "optimized"]
+
+    jankFrames: int = Field(ge=0)
+
+    totalFrames: int = Field(gt=0)
+
+    heapMemoryMb: float = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _validate_jank_frames(self):
+        if self.jankFrames > self.totalFrames:
+            raise ValueError("jankFrames no puede superar totalFrames")
+        return self
 
 class ScreenViewEvent(_BaseEvent):
     eventType: Literal["screen_view"]
@@ -224,6 +244,7 @@ AnalyticsEvent = Annotated[
         FeatureUsedEvent,
         CrashEvent,
         RecommendationShownEvent,
+        PerformanceBenchmarkEvent,
         RecommendedActivitySelectedEvent,
         FriendAvailabilityUsedEvent,
         # Inscripciones y cancelaciones confirmadas para BQ12.
@@ -293,6 +314,12 @@ def to_row(event, received_at: datetime) -> dict:
         "title": getattr(event, "title", None),
         "price": getattr(event, "price", None),
         "activity_duration_minutes": getattr(event, "activityDurationMinutes", None),
+        "benchmark_id": getattr(event, "benchmarkId", None),
+        "optimization_stage": getattr(event, "optimizationStage", None),
+        "jank_frames": getattr(event, "jankFrames", None),
+        "total_frames": getattr(event, "totalFrames", None),
+        "heap_memory_mb": getattr(event, "heapMemoryMb", None),
+    }
         "attempt_id": str(attempt_id) if attempt_id is not None else None,
         "preferences": preferences,
         "location_name": getattr(event, "locationName", None),
