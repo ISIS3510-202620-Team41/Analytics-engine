@@ -31,6 +31,20 @@ CREATE TABLE IF NOT EXISTS events (
     network_quality    TEXT,
     title              TEXT,
     price              TEXT,
+    activity_duration_minutes  INTEGER,
+    -- BQ11: cupones comerciales durante los descansos entre clases.
+    deal_id            TEXT,
+    deal_category      TEXT,
+    -- Cuantos cupones se mostraron de una vez. Un evento por pantalla y no uno por
+    -- cupon: diez tarjetas producen diez impresiones, y mandarlas sueltas triplicaria
+    -- el volumen de eventos para alimentar un denominador.
+    deal_count         INTEGER,
+    -- NULL a proposito, y es la decision mas importante de BQ11: son tres estados, no
+    -- dos. 1 en descanso, 0 fuera, NULL cuando el estudiante no importo su horario.
+    -- Guardar 0 en el tercer caso lo meteria en el grupo de control y sesgaria la
+    -- comparacion sin que nada lo avisara.
+    during_break       INTEGER,
+    break_minutes_left INTEGER
     activity_duration_minutes INTEGER,
     benchmark_id       TEXT,
     optimization_stage TEXT,
@@ -75,6 +89,9 @@ COLUMNS = (
     "available_friends_count",
     "selected_available_friends_count",
     "creation_status", "plan_id",
+    # BQ11
+    "deal_id", "deal_category", "deal_count",
+    "during_break", "break_minutes_left",
 )
 
 
@@ -86,6 +103,17 @@ MIGRATIONS = {
     "price": "TEXT",
     "activity_duration_minutes": "INTEGER",
     "feature": "TEXT",
+
+    # BQ11: cupones comerciales durante los descansos entre clases.
+    "deal_id": "TEXT",
+    "deal_category": "TEXT",
+    # Cuantos cupones se mostraron de una vez: un evento por pantalla y no uno por
+    # tarjeta, para no triplicar el volumen de eventos alimentando un denominador.
+    "deal_count": "INTEGER",
+    # Tres estados y no dos: 1 en descanso, 0 fuera, NULL si no se sabe porque el
+    # estudiante no importo su horario. El NULL se excluye de la comparacion.
+    "during_break": "INTEGER",
+    "break_minutes_left": "INTEGER",
 
     # BQ12
     "enrollment_id": "TEXT",

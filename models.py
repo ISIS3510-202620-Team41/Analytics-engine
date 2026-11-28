@@ -137,6 +137,48 @@ class RecommendedActivitySelectedEvent(_BaseEvent):
         return value.strip().upper() if isinstance(value, str) else value
 
 
+class _DealEvent(_BaseEvent):
+    """Lo que comparten los tres eventos de cupones: el contexto del descanso.
+
+    `duringBreak` es `bool | None` y no `bool`. Es la decision que sostiene toda la
+    BQ11: son tres estados. True en un hueco entre clases, False fuera, y None cuando
+    el estudiante no ha importado su horario y no se sabe. Si fuera un booleano a
+    secas, Pydantic convertiria el "no se sabe" en False y esos usuarios entrarian al
+    grupo de control, diluyendo la tasa contra la que se compara.
+    """
+    duringBreak: bool | None = None
+    breakMinutesLeft: int | None = Field(default=None, ge=0)
+
+
+class DealsShownEvent(_DealEvent):
+    """Se le mostro al estudiante una lista de cupones.
+
+    Es el denominador del embudo. Lleva `count` en vez de mandarse un evento por cupon
+    porque una pantalla con diez tarjetas produce diez impresiones: sueltas,
+    triplicarian el volumen de eventos solo para alimentar un conteo.
+    """
+    eventType: Literal["deals_shown"]
+    count: int = Field(ge=0, le=500)
+
+
+class DealOpenedEvent(_DealEvent):
+    """El estudiante abrio el detalle de un cupon. Es el paso intermedio del embudo."""
+    eventType: Literal["deal_opened"]
+    dealId: str = Field(min_length=1, max_length=100)
+    dealCategory: str | None = Field(default=None, max_length=50)
+
+
+class DealRedeemedEvent(_DealEvent):
+    """El estudiante redimio un cupon. Es el numerador."""
+    eventType: Literal["deal_redeemed"]
+    dealId: str = Field(min_length=1, max_length=100)
+    dealCategory: str | None = Field(default=None, max_length=50)
+    # Si se redimio sin conexion. Importa para la BQ: una redencion encolada puede
+    # llegar horas despues, y su contexto de descanso es el del momento en que el
+    # usuario la hizo, no el de cuando llego.
+    redeemedOffline: bool = False
+
+
 class FriendAvailabilityUsedEvent(_BaseEvent):
     eventType: Literal["friend_availability_used"]
     action: Literal["viewed", "plan_created", "plan_joined", "matrix_viewed", "create_plan"] = "viewed"
@@ -247,6 +289,9 @@ AnalyticsEvent = Annotated[
         PerformanceBenchmarkEvent,
         RecommendedActivitySelectedEvent,
         FriendAvailabilityUsedEvent,
+        DealsShownEvent,
+        DealOpenedEvent,
+        DealRedeemedEvent,
         # Inscripciones y cancelaciones confirmadas para BQ12.
         ActivityEnrollmentConfirmedEvent,
         ActivityEnrollmentCanceledEvent,
@@ -314,12 +359,19 @@ def to_row(event, received_at: datetime) -> dict:
         "title": getattr(event, "title", None),
         "price": getattr(event, "price", None),
         "activity_duration_minutes": getattr(event, "activityDurationMinutes", None),
+        "deal_id": getattr(event, "dealId", None),
+        "deal_category": getattr(event, "dealCategory", None),
+        "deal_count": getattr(event, "count", None),
+        # El booleano se guarda como 1/0 y el None se queda None. SQLite no tiene
+        # booleanos, y convertir el None aqui perderia el tercer estado.
+        "during_break": None if getattr(event, "duringBreak", None) is None
+        else int(event.duringBreak),
+        "break_minutes_left": getattr(event, "breakMinutesLeft", None),
         "benchmark_id": getattr(event, "benchmarkId", None),
         "optimization_stage": getattr(event, "optimizationStage", None),
         "jank_frames": getattr(event, "jankFrames", None),
         "total_frames": getattr(event, "totalFrames", None),
         "heap_memory_mb": getattr(event, "heapMemoryMb", None),
-    }
         "attempt_id": str(attempt_id) if attempt_id is not None else None,
         "preferences": preferences,
         "location_name": getattr(event, "locationName", None),
