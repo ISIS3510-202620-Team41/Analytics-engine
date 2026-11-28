@@ -27,10 +27,23 @@ CREATE TABLE IF NOT EXISTS events (
     free_time_minutes  INTEGER,
     recommendation_id  TEXT,
     action             TEXT,
-    network_quality    TEXT
+    network_quality    TEXT,
     title              TEXT,
     price              TEXT,
-    activity_duration_minutes  INTEGER
+    activity_duration_minutes  INTEGER,
+    -- BQ11: cupones comerciales durante los descansos entre clases.
+    deal_id            TEXT,
+    deal_category      TEXT,
+    -- Cuantos cupones se mostraron de una vez. Un evento por pantalla y no uno por
+    -- cupon: diez tarjetas producen diez impresiones, y mandarlas sueltas triplicaria
+    -- el volumen de eventos para alimentar un denominador.
+    deal_count         INTEGER,
+    -- NULL a proposito, y es la decision mas importante de BQ11: son tres estados, no
+    -- dos. 1 en descanso, 0 fuera, NULL cuando el estudiante no importo su horario.
+    -- Guardar 0 en el tercer caso lo meteria en el grupo de control y sesgaria la
+    -- comparacion sin que nada lo avisara.
+    during_break       INTEGER,
+    break_minutes_left INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_events_type_time ON events (event_type, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_events_user_time ON events (user_id, occurred_at);
@@ -39,7 +52,8 @@ CREATE INDEX IF NOT EXISTS idx_events_user_time ON events (user_id, occurred_at)
 COLUMNS = (
     "event_id", "event_type", "user_id", "session_id", "app_version", "occurred_at", "received_at",
     "screen", "component", "exception_type", "load_type", "duration_ms", "activity_id", "category",
-    "free_time_minutes", "recommendation_id", "action", "network_quality", "title", "price", "activity_duration_minutes"
+    "free_time_minutes", "recommendation_id", "action", "network_quality", "title", "price", "activity_duration_minutes",
+    "deal_id", "deal_category", "deal_count", "during_break", "break_minutes_left"
 )
 
 _initialized: set[str] = set()
@@ -73,6 +87,17 @@ def connect():
                 conn.execute("ALTER TABLE events ADD COLUMN activity_duration_minutes INTEGER")
             if "feature" not in existing:
                 conn.execute("ALTER TABLE events ADD COLUMN feature TEXT")
+            # BQ11. Van con ALTER y no solo en el CREATE porque las bases que ya existen
+            # no se recrean: sin esto, un despliegue en marcha fallaria en cada insert.
+            for column, kind in (
+                ("deal_id", "TEXT"),
+                ("deal_category", "TEXT"),
+                ("deal_count", "INTEGER"),
+                ("during_break", "INTEGER"),
+                ("break_minutes_left", "INTEGER"),
+            ):
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE events ADD COLUMN {column} {kind}")
             _initialized.add(key)
         yield conn
         conn.commit()

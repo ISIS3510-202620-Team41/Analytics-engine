@@ -491,3 +491,81 @@ else:
             else f"{value * 100:.1f}%"
         )
     )
+
+# ---------------------------------------------------------------- BQ11
+st.header("11 · Commercial deals during student breaks")
+st.caption(
+    "¿Los cupones comerciales se interactúan y se redimen más cuando el estudiante "
+    "está en un hueco entre clases? Es la pregunta que decide cuánto vale un espacio "
+    "publicitario en cada franja."
+)
+
+funnel = data.get("dealBreakFunnel")
+
+if not funnel:
+    st.info("No deal data yet.")
+else:
+    inside = funnel["duringBreak"]
+    outside = funnel["outsideBreak"]
+
+    # Las dos tasas lado a lado: es la comparación, y es la respuesta.
+    left, right, lift = st.columns(3)
+    left.metric(
+        "Redemption rate · during breaks",
+        pct(inside["redemptionRate"]),
+        help=f"{inside['redeemed']} redeemed out of {inside['shown']} shown",
+    )
+    right.metric(
+        "Redemption rate · outside breaks",
+        pct(outside["redemptionRate"]),
+        help=f"{outside['redeemed']} redeemed out of {outside['shown']} shown",
+    )
+    lift.metric(
+        "Lift",
+        "no data" if funnel["redemptionLift"] is None else f"{funnel['redemptionLift']}×",
+        help="Cuántas veces más se redime durante un descanso",
+    )
+
+    st.subheader("Funnel")
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "Context": "During breaks",
+                    "Shown": inside["shown"],
+                    "Opened": inside["opened"],
+                    "Redeemed": inside["redeemed"],
+                    "Interaction rate": pct(inside["interactionRate"]),
+                    "Redemption rate": pct(inside["redemptionRate"]),
+                },
+                {
+                    "Context": "Outside breaks",
+                    "Shown": outside["shown"],
+                    "Opened": outside["opened"],
+                    "Redeemed": outside["redeemed"],
+                    "Interaction rate": pct(outside["interactionRate"]),
+                    "Redemption rate": pct(outside["redemptionRate"]),
+                },
+            ]
+        ),
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    # Se muestra siempre, también cuando es cero: quien lea la comparación tiene que
+    # saber sobre cuánta población se calculó. Un número alto aquí significa que la
+    # respuesta sale de una minoría de los usuarios, y eso cambia cuánto confiar en ella.
+    st.caption(
+        f"{funnel['eventsWithUnknownContext']} events excluded: the student had not "
+        "imported a schedule, so it is unknown whether they were on a break. They are "
+        "left out of both groups on purpose — counting them as 'outside breaks' would "
+        "dilute the control group and overstate the difference."
+    )
+
+    categories = funnel.get("byCategoryDuringBreak") or []
+    if categories:
+        st.subheader("Which merchants win the break (commercial partnerships)")
+        table = pd.DataFrame(categories)
+        table["redemptionRatePerOpen"] = table["redemptionRatePerOpen"].map(pct)
+        table.columns = ["Category", "Opened", "Redeemed", "Redeemed per open"]
+        st.dataframe(table, hide_index=True, use_container_width=True)
