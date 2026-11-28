@@ -302,64 +302,73 @@ else:
 st.header("8 · Feature adoption among active users")
 
 ad = data.get("featureAdoption", {})
-screens = ad.get("screens", [])
+features = ad.get("features", [])
 
-if not screens:
-    st.info("No screen usage data yet.")
+st.metric("Active users (last 7 days)", ad.get("activeUsers", 0))
+
+if not features:
+    st.info("No feature usage data yet.")
 else:
-    st.metric("Active users (last 7 days)", ad.get("activeUsers", 0))
-
     # Exclude undefined adoption rates from the chart.
-    chart_screens = [
-        s for s in screens
-        if s["adoptionRate"] is not None
+    chart_features = [
+        feature for feature in features
+        if feature["adoptionRate"] is not None
     ]
 
-    if chart_screens:
+    if chart_features:
         chart_df = pd.DataFrame([
             {
-                "Screen": s["screen"],
-                "Usage (%)": s["adoptionRate"] * 100,
+                "Feature": feature["feature"],
+                "Adoption (%)": feature["adoptionRate"] * 100,
             }
-            for s in chart_screens
-        ]).set_index("Screen")
+            for feature in chart_features
+        ]).set_index("Feature")
 
         st.bar_chart(
             chart_df,
             y_label="% of active users",
         )
+
         st.caption("Underutilization threshold: below 40%.")
     else:
         st.info("No active users in the selected window.")
 
-    # Highlight underutilized screens.
+    # Highlight underutilized features.
     underutilized = [
-        s for s in screens if s["underutilized"]
+        feature for feature in features
+        if feature["underutilized"]
     ]
 
     if underutilized:
-        names = ", ".join(s["screen"] for s in underutilized)
+        names = ", ".join(
+            feature["feature"] for feature in underutilized
+        )
         st.warning(f"Below 40% adoption: {names}")
 
-    # Keep a status table alongside the chart.
+    # Feature details, including their associated screens.
     table = pd.DataFrame([
         {
-            "Screen": s["screen"],
-            "Unique users": s["uniqueUsers"],
+            "Feature": feature["feature"],
+            "Screen": (
+                ", ".join(feature["screens"])
+                if feature["screens"]
+                else "Not recorded"
+            ),
+            "Unique users": feature["uniqueUsers"],
             "Adoption": (
-                pct(s["adoptionRate"])
-                if s["adoptionRate"] is not None
+                pct(feature["adoptionRate"])
+                if feature["adoptionRate"] is not None
                 else "No data"
             ),
             "Status": (
                 "Underutilized"
-                if s["underutilized"]
+                if feature["underutilized"]
                 else "No data"
-                if s["adoptionRate"] is None
+                if feature["adoptionRate"] is None
                 else "OK"
             ),
         }
-        for s in screens
+        for feature in features
     ])
 
     st.dataframe(
@@ -367,7 +376,6 @@ else:
         hide_index=True,
         use_container_width=True,
     )
-    
 
 # ------------------------------------------------------------------ BQ9
 st.header("9 · Category and Activity Demand by Time Slot (Commercial Partnerships)")
@@ -569,3 +577,396 @@ else:
         table["redemptionRatePerOpen"] = table["redemptionRatePerOpen"].map(pct)
         table.columns = ["Category", "Opened", "Redeemed", "Redeemed per open"]
         st.dataframe(table, hide_index=True, use_container_width=True)
+    st.dataframe(
+        table,
+        hide_index=True,
+        use_container_width=True,
+    )
+
+
+# ------------------------------------------------------------------ BQ15
+st.header("15 · Micro-optimization impact on performance")
+
+pb = data.get("performanceBenchmark", {})
+benchmarks = pb.get("benchmarks", [])
+
+if not benchmarks:
+    st.info("No performance benchmark measurements yet.")
+else:
+    comparable = [
+        b for b in benchmarks
+        if b.get("status") == "compared"
+    ]
+
+    if not comparable:
+        st.warning(
+            "Benchmarks were found, but baseline and optimized "
+            "measurements are needed for comparison."
+        )
+    else:
+        # Indicadores generales
+        avg_jank = pd.Series([
+            b["jankReductionPercent"]
+            for b in comparable
+            if b.get("jankReductionPercent") is not None
+        ])
+
+        avg_heap = pd.Series([
+            b["heapReductionPercent"]
+            for b in comparable
+            if b.get("heapReductionPercent") is not None
+        ])
+
+        c1, c2, c3 = st.columns(3)
+
+        c1.metric(
+            "Average jank reduction",
+            f"{avg_jank.mean():.2f}%"
+            if not avg_jank.empty else "No data"
+        )
+
+        c2.metric(
+            "Average heap memory reduction",
+            f"{avg_heap.mean():.2f}%"
+            if not avg_heap.empty else "No data"
+        )
+
+        c3.metric(
+            "Comparable benchmarks",
+            len(comparable)
+        )
+
+        # Comparación de jank frames
+        st.subheader("Slow frame rate: baseline vs optimized")
+
+        jank_data = pd.DataFrame([
+            {
+                "Benchmark": b["benchmarkId"],
+                "Baseline (%)": b["baselineJankRate"],
+                "Optimized (%)": b["optimizedJankRate"],
+            }
+            for b in comparable
+            if b.get("baselineJankRate") is not None
+            and b.get("optimizedJankRate") is not None
+        ])
+
+        if not jank_data.empty:
+            st.bar_chart(
+                jank_data.set_index("Benchmark"),
+                y_label="Slow frames (%)"
+            )
+        else:
+            st.info("No jank frame comparisons available.")
+
+        # Comparación de memoria
+        st.subheader("Heap memory: baseline vs optimized")
+
+        memory_data = pd.DataFrame([
+            {
+                "Benchmark": b["benchmarkId"],
+                "Baseline (MB)": b["baselineHeapMemoryMb"],
+                "Optimized (MB)": b["optimizedHeapMemoryMb"],
+            }
+            for b in comparable
+        ])
+
+        st.bar_chart(
+            memory_data.set_index("Benchmark"),
+            y_label="Heap memory (MB)"
+        )
+
+        # Tabla de resultados
+        st.subheader("Performance benchmark details")
+
+        table = pd.DataFrame([
+            {
+                "Benchmark": b["benchmarkId"],
+                "Baseline jank (%)": b["baselineJankRate"],
+                "Optimized jank (%)": b["optimizedJankRate"],
+                "Jank reduction (%)": b["jankReductionPercent"],
+                "Baseline heap (MB)": b["baselineHeapMemoryMb"],
+                "Optimized heap (MB)": b["optimizedHeapMemoryMb"],
+                "Memory reduction (%)": b["heapReductionPercent"],
+            }
+            for b in comparable
+        ])
+
+        st.dataframe(
+            table,
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    # Benchmarks que todavía no tienen ambos escenarios
+    incomplete = [
+        b for b in benchmarks
+        if b.get("status") == "insufficient_data"
+    ]
+
+    if incomplete:
+        st.caption(
+            f"{len(incomplete)} benchmark(s) need baseline "
+            "and optimized measurements."
+        )
+
+# ------------------------------------------------------------------ BQ12
+st.header("BQ-12 — Activity Cancellation Rate & Advance Lead Time")
+if exact_version.strip():
+    st.info(
+        "BQ-12 enrollment events are generated by the Backend and do not "
+        "have an app version. Clear the exact-version filter to view them."
+    )
+cancellation = data.get("cancellationRate", {})
+average_minutes = cancellation.get("averageAdvanceLeadTimeMinutes")
+if average_minutes is None:
+    lead_time = "no data"
+elif average_minutes >= 60:
+    lead_time = f"{average_minutes / 60:.1f} h"
+else:
+    lead_time = f"{average_minutes:.1f} min"
+
+confirmed_enrollments = cancellation.get("confirmedEnrollments", 0)
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Cancellation rate", pct(cancellation.get("cancellationRate")) if confirmed_enrollments else "No data")
+c2.metric("Confirmed enrollments", confirmed_enrollments)
+c3.metric("Canceled enrollments", cancellation.get("canceledEnrollments", 0))
+c4.metric("Average advance lead time", lead_time)
+
+if "lateCancellations" in cancellation or "cancellationsFromEarlierEnrollments" in cancellation:
+    c1, c2 = st.columns(2)
+    if "lateCancellations" in cancellation:
+        c1.metric("Late cancellations", cancellation["lateCancellations"])
+    if "cancellationsFromEarlierEnrollments" in cancellation:
+        c2.metric("Cancellations from earlier enrollments", cancellation["cancellationsFromEarlierEnrollments"])
+
+distribution = cancellation.get("leadTimeDistribution") or {}
+lead_time_counts = {
+    "Under 1 hour": distribution.get("under1Hour", 0),
+    "1 to 24 hours": distribution.get("between1And24Hours", 0),
+    "Over 24 hours": distribution.get("over24Hours", 0),
+}
+if any(lead_time_counts.values()):
+    st.subheader("Advance lead time distribution")
+    chart = pd.Series(lead_time_counts, name="Cancellations").rename_axis("Lead time")
+    st.bar_chart(chart, y_label="Cancellations")
+else:
+    st.info("No advance lead time measurements yet.")
+
+# ============================================================
+# BQ14: Plan Creation Success
+# ============================================================
+
+st.header("BQ-14 — Plan Creation Success")
+
+plan_creation_url = f"{url}/metrics/plan-creation-success"
+
+try:
+    response = requests.get(plan_creation_url, headers=headers, timeout=10)
+    response.raise_for_status()
+    plan_data = response.json()
+
+    total_attempts = plan_data["totalResolvedAttempts"]
+    minimum_sample = plan_data["minimumSampleSize"]
+    combinations = plan_data["combinations"]
+    winner = plan_data["winner"]
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "Resolved attempts",
+        total_attempts,
+    )
+
+    col2.metric(
+        "Minimum sample size",
+        minimum_sample,
+    )
+
+    if winner is not None:
+        col3.metric(
+            "Highest success rate",
+            f"{winner['successRate']:.2f}%",
+        )
+    else:
+        col3.metric(
+            "Highest success rate",
+            "Not enough data",
+        )
+
+    st.caption(
+        "Location grouping precision: "
+        f"{plan_data['locationPrecisionDecimals']} decimal places."
+    )
+
+    if winner is not None:
+        st.subheader("Best-performing combination")
+
+        st.write(
+            f"**Preferences:** "
+            f"{', '.join(winner['preferences']) or 'None'}"
+        )
+        st.write(f"**Free time:** {winner['freeTimeBucket']}")
+        st.write(f"**Location:** {winner['location']}")
+        st.write(
+            f"**Available friends:** "
+            f"{winner['availableFriendsCount']}"
+        )
+        st.write(
+            f"**Selected available friends:** "
+            f"{winner['selectedAvailableFriendsCount']}"
+        )
+        st.write(
+            f"**Attempts:** {winner['attempts']} "
+            f"({winner['successes']} successes, "
+            f"{winner['failures']} failures)"
+        )
+
+    else:
+        st.info(
+            "No combination has reached the minimum sample size yet. "
+            "More resolved attempts are needed before identifying "
+            "a best-performing combination."
+        )
+
+    st.subheader("Combination comparison")
+
+    if combinations:
+        table_data = []
+
+        for item in combinations:
+            table_data.append({
+                "Preferences": (
+                    ", ".join(item["preferences"]) or "None"
+                ),
+                "Free time": item["freeTimeBucket"],
+                "Location": item["location"],
+                "Available friends": item["availableFriendsCount"],
+                "Selected friends": (
+                    item["selectedAvailableFriendsCount"]
+                ),
+                "Attempts": item["attempts"],
+                "Successes": item["successes"],
+                "Failures": item["failures"],
+                "Success rate (%)": item["successRate"],
+                "Eligible": (
+                    "Yes" if item["eligible"] else "Insufficient sample"
+                ),
+            })
+
+        df = pd.DataFrame(table_data)
+
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.subheader("Success rate by combination")
+
+        chart_data = pd.DataFrame({
+            "Combination": [
+                (
+                    f"{', '.join(item['preferences']) or 'No preferences'}"
+                    f" | {item['freeTimeBucket']}"
+                    f" | {item['location']}"
+                    f" | {item['selectedAvailableFriendsCount']} "
+                    f"selected friends"
+                )
+                for item in combinations
+            ],
+            "Success rate (%)": [
+                item["successRate"]
+                for item in combinations
+            ],
+        })
+
+        chart_data = chart_data.set_index("Combination")
+
+        st.bar_chart(
+            chart_data,
+            y="Success rate (%)",
+        )
+
+        st.caption(
+            "Combinations below the minimum sample size are displayed "
+            "for reference, but are not considered eligible winners."
+        )
+
+    else:
+        st.info(
+            "There are no resolved plan creation attempts to display."
+        )
+
+except requests.RequestException as error:
+    st.error(
+        f"Could not load plan creation metrics: {error}"
+    )
+
+# ------------------------------------------------------------------ BQ13
+st.header("13 · Friend Availability Impact on Group Plan Creation (BQ-13)")
+st.caption(
+    "Type 3 Business Question: Evaluates how consulting friend schedule availability "
+    "impacts the rate and volume of group plan creation compared to the direct browsing flow."
+)
+fai = data.get("friendAvailabilityImpact", {})
+
+if not fai.get("activeUsers"):
+    st.info("No user activity recorded in this period to evaluate friend availability impact.")
+else:
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(
+        "Availability Conversion",
+        pct(fai.get("availabilityConversionRate")),
+        help="Proportion of users consulting friend availability who created or joined a plan",
+    )
+    c2.metric(
+        "Direct Flow Conversion",
+        pct(fai.get("directConversionRate")),
+        help="Proportion of users in direct flow who selected an activity without checking friends",
+    )
+    c3.metric(
+        "Lift Factor",
+        f"{fai.get('liftFactor', 1.0):.2f}x",
+        help="Relative multiplier in plan creation likelihood when using friend availability",
+    )
+    c4.metric(
+        "Plans with Availability",
+        fai.get("plansWithAvailability", 0),
+        help="Total plans created or joined directly from the friend availability feature",
+    )
+
+    # Comparative bar chart
+    comparison_df = pd.DataFrame(
+        [
+            {"Flow": "Friend Availability", "Conversion Rate": fai.get("availabilityConversionRate", 0.0)},
+            {"Flow": "Direct Browsing", "Conversion Rate": fai.get("directConversionRate", 0.0)},
+        ]
+    )
+    st.bar_chart(
+        comparison_df.set_index("Flow")["Conversion Rate"],
+        y_label="Conversion Rate (0 to 1)",
+    )
+
+    # Summary table
+    comp_table = pd.DataFrame(
+        [
+            {
+                "Segment": "With Friend Availability",
+                "Users in Segment": fai.get("usersConsultingAvailability", 0),
+                "Users Converting to Plan": fai.get("usersCreatingPlansWithAvailability", 0),
+                "Plans Created/Joined": fai.get("plansWithAvailability", 0),
+                "Conversion Rate": pct(fai.get("availabilityConversionRate")),
+            },
+            {
+                "Segment": "Direct Browsing (Without Availability)",
+                "Users in Segment": fai.get("usersWithoutAvailability", 0),
+                "Users Converting to Plan": fai.get("usersCreatingPlansWithoutAvailability", 0),
+                "Plans Created/Joined": fai.get("plansWithoutAvailability", 0),
+                "Conversion Rate": pct(fai.get("directConversionRate")),
+            },
+        ]
+    )
+    st.dataframe(comp_table, hide_index=True, use_container_width=True)
+
+    if fai.get("conclusion"):
+        st.info(fai.get("conclusion"))
