@@ -367,13 +367,11 @@ def to_row(event, received_at: datetime) -> dict:
         "during_break": None if getattr(event, "duringBreak", None) is None
         else int(event.duringBreak),
         "break_minutes_left": getattr(event, "breakMinutesLeft", None),
-    }
         "benchmark_id": getattr(event, "benchmarkId", None),
         "optimization_stage": getattr(event, "optimizationStage", None),
         "jank_frames": getattr(event, "jankFrames", None),
         "total_frames": getattr(event, "totalFrames", None),
         "heap_memory_mb": getattr(event, "heapMemoryMb", None),
-    }
         "attempt_id": str(attempt_id) if attempt_id is not None else None,
         "preferences": preferences,
         "location_name": getattr(event, "locationName", None),
